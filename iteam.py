@@ -60,3 +60,15 @@ def result(value):
     Chame no fim do Code: result({"ok": True, "total": 42}). Determinístico:
     NÃO dependa de 'última linha do stdout' — sempre use result()."""
     print("__ITEAM_RESULT__" + json.dumps(value, default=str))
+
+class _DB:
+    """Postgres ISOLADO do projeto (recurso alocado). read+write no seu próprio banco."""
+    def query(self, sql):   return iteam_query("db_query", sql=sql)
+    def execute(self, sql): return iteam_call("db_execute", sql=sql)
+db = _DB()
+
+def resources():
+    """Lista os RECURSOS de dados alocados no projeto (uuid, tipo, namespace).
+    Chame PRIMEIRO pra saber o que dá pra usar (datastore=ClickHouse, db=Postgres)."""
+    r = iteam_call("resources_list")
+    return (r or {}).get("resources", r)

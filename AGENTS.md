@@ -61,3 +61,13 @@ prev = kv.get("ontem") or 0
 kv.set("ontem", n, ttl=7*24*3600)
 result({"ok": True, "hoje": n, "delta": n - prev})
 ```
+
+## Recursos de dados do projeto (farm_resources) — PEGUE PRIMEIRO
+Ao começar, descubra o que o projeto tem alocado:
+```python
+from iteam import resources, datastore, db
+res = resources()   # [{uuid, type, namespace, sdk}, ...]
+```
+- **datastore** (ClickHouse do projeto, se alocado) — analítico, colunar: `datastore.query("SELECT ...")`.
+- **db** (Postgres isolado do projeto, se alocado) — relacional read+write: `db.execute("CREATE TABLE ...")`, `db.query("SELECT ...")`.
+- Recursos são ATIVADOS pelo usuário na aba Codes (não automático). Se `resources()` não trouxer o tipo, peça pro usuário ativar. Nunca há credencial no código — o iTeam resolve pelo token do projeto e isola (um projeto nunca acessa o recurso de outro). Cada objeto que você criar fica nesse espaço isolado do projeto.
