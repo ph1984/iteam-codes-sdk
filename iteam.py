@@ -54,3 +54,9 @@ kv = _KV()
 class _DataStore:
     def query(self, sql): return iteam_query("datastore_query", sql=sql)
 datastore = _DataStore()
+
+def result(value):
+    """Retorna o RESULTADO ESTRUTURADO do run (vira run.result no iTeam).
+    Chame no fim do Code: result({"ok": True, "total": 42}). Determinístico:
+    NÃO dependa de 'última linha do stdout' — sempre use result()."""
+    print("__ITEAM_RESULT__" + json.dumps(value, default=str))
