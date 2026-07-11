@@ -84,3 +84,22 @@ Fluxo recomendado: `resources()` → `db.tables()/datastore.tables()` → `colum
 ## Onde vive a infra dos recursos (para operadores)
 - **ClickHouse** = cluster analytics do iTrack (gerenciado). DB isolado por projeto (`proj_<id>`).
 - **Postgres** = node dedicado do `farm_resources` (hoje `pg-hom4`, container `resource-pg` em hom-4), backup S3 (Contabo) a cada 6h. DB + role isolados por projeto; o runtime conecta como a role escopada (o Code nunca vê credencial). Novos nodes entram no farm e cada recurso guarda em qual node vive.
+
+## Testar LOCAL (na IDE) sem deploy e sem segredo
+```bash
+export ITEAM_API_URL=https://api.iteam.works      # stg.api.iteam.works p/ homolog
+export ITEAM_PROJECT_TOKEN=pct_...                # token do projeto (aba Codes); no .env, NUNCA no git
+python main.py                                    # o SDK usa o token do projeto contra /api/project/codes/call
+```
+O mesmo `main.py` roda idêntico no deploy (o iTeam injeta o acesso no sandbox). Você nunca manuseia segredo.
+
+## Recursos dos AGENTES do projeto (MCP, HTTP tools, learned APIs, datasources)
+Se há agentes no projeto, as tools deles viram catálogo:
+```python
+from iteam import agent_tools, iteam_call, iteam_query
+for t in agent_tools():            # nome + descrição + schema
+    print(t["name"], t.get("description"))
+rows = iteam_query("ch_query", sql="SELECT ...")   # ex.: MCP ClickHouse de um agente
+res  = iteam_call("alguma_tool", **args)           # HTTP tool / learned API / MCP
+```
+O backend acha QUAL agente do projeto tem a tool e executa com a credencial dele (cofre) — o segredo nunca chega ao seu código. Tirou o agente do projeto → a tool some do catálogo e para de funcionar.
