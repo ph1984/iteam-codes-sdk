@@ -71,3 +71,16 @@ res = resources()   # [{uuid, type, namespace, sdk}, ...]
 - **datastore** (ClickHouse do projeto, se alocado) — analítico, colunar: `datastore.query("SELECT ...")`.
 - **db** (Postgres isolado do projeto, se alocado) — relacional read+write: `db.execute("CREATE TABLE ...")`, `db.query("SELECT ...")`.
 - Recursos são ATIVADOS pelo usuário na aba Codes (não automático). Se `resources()` não trouxer o tipo, peça pro usuário ativar. Nunca há credencial no código — o iTeam resolve pelo token do projeto e isola (um projeto nunca acessa o recurso de outro). Cada objeto que você criar fica nesse espaço isolado do projeto.
+
+## Conhecer o schema ANTES de escrever SQL (evita erro)
+```python
+datastore.tables()            # tabelas do ClickHouse do projeto (com rows/bytes)
+datastore.columns("eventos")  # colunas + tipos
+db.tables()                   # tabelas do Postgres do projeto
+db.columns("clientes")        # colunas + tipos + nullable
+```
+Fluxo recomendado: `resources()` → `db.tables()/datastore.tables()` → `columns(tabela)` → então escreva o SELECT/INSERT certo.
+
+## Onde vive a infra dos recursos (para operadores)
+- **ClickHouse** = cluster analytics do iTrack (gerenciado). DB isolado por projeto (`proj_<id>`).
+- **Postgres** = node dedicado do `farm_resources` (hoje `pg-hom4`, container `resource-pg` em hom-4), backup S3 (Contabo) a cada 6h. DB + role isolados por projeto; o runtime conecta como a role escopada (o Code nunca vê credencial). Novos nodes entram no farm e cada recurso guarda em qual node vive.
