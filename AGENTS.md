@@ -14,10 +14,24 @@ recursos escopados por projeto e agendamento. Leia este guia inteiro antes de ag
 from iteam import kv, datastore, iteam_call, iteam_query, iteam_tools, result
 ```
 - `kv.set/get/delete/incr/keys` — cache/estado chave-valor **isolado por projeto** (Redis no servidor).
-- `datastore.query(sql)` — **Data Store** analítico (ClickHouse), **somente leitura**.
-- `iteam_call(tool, **args)` / `iteam_query(...)` — tools do agente/projeto (MCP, HTTP, APIs aprendidas).
-- `iteam_tools("filtro")` — descobre as tools disponíveis (nomes + schema).
+- `datastore.query(sql)` — **Data Store** analítico do projeto (ClickHouse). Se o projeto ALOCOU um Data Store,
+  é **read+WRITE** (crie tabelas, insira, agregue). Sem Data Store alocado, só há leitura no compartilhado —
+  para gravar, o usuário precisa **Ativar** o Data Store na aba Codes.
+- `db.query/execute/tables/columns` — **Postgres** relacional do projeto (read+write, se alocado).
+- `agent_tools()` — catálogo das tools dos AGENTES do projeto (nome + schema). Chame por `iteam_call`/`iteam_query`.
+- `resources()` — recursos de dados alocados no projeto (kv/datastore/db).
+- `iteam_call(tool, **args)` / `iteam_query(...)` — executa uma tool de agente/projeto (MCP, HTTP, APIs aprendidas).
 - `result({...})` — **SEMPRE** retorne o resultado estruturado com isto (vira `run.result`). NÃO confie em "última linha".
+
+## Descobrir os recursos disponíveis (BATA AQUI PRIMEIRO)
+Antes de escrever qualquer lógica, faça DUAS chamadas para saber o que o projeto oferece e como usar cada coisa:
+```python
+from iteam import resources, agent_tools
+resources()      # → recursos de DADOS do projeto: [{uuid, type: 'clickhouse'|'postgres', namespace, sdk}]
+agent_tools()    # → ferramentas dos AGENTES do projeto: [{name, description, parameters(schema), source, agentId}]
+```
+`agent_tools()` traz o **schema de cada ferramenta** (parâmetros) — é assim que você (IDE/IA) sabe exatamente
+como chamar cada uma sem adivinhar. Some naturalmente o Atlas/descrição do recurso quando disponível.
 
 ## Regras de ouro (NÃO viole)
 1. **Segredos só no `.env`** (já está no `.gitignore`). Nunca no código, nunca no Git, nunca em `print`.

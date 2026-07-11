@@ -46,9 +46,11 @@ curl https://api.iteam.works/api/project/codes/CODE_ID/runs/RUN_ID \
 | API | O que é |
 |-----|---------|
 | `kv.get/set/delete/incr/keys` | Cache/estado chave-valor **isolado por projeto** (Redis no servidor) |
-| `datastore.query(sql)` | **Data Store** analítico (ClickHouse) — somente leitura |
-| `iteam_call(tool, **args)` | Tools do agente/projeto (MCP, HTTP, APIs aprendidas) |
-| `iteam_tools(filtro)` | Descobre as tools disponíveis |
+| `datastore.query/tables/columns` | **Data Store** analítico do projeto (ClickHouse) — **read+write** quando alocado |
+| `db.query/execute/tables/columns` | **Postgres** relacional do projeto (read+write, quando alocado) |
+| `resources()` | Recursos de dados alocados no projeto (kv/datastore/db) |
+| `agent_tools()` | Catálogo das tools dos **agentes** do projeto (nome + schema) — some se tirar o agente |
+| `iteam_call(tool, **args)` / `iteam_query(...)` | Executa uma tool de agente/projeto (MCP, HTTP, APIs aprendidas) |
 
 O iTeam injeta um token de projeto **assinado e efêmero** no sandbox em cada run;
 o SDK usa esse token. Suas credenciais nunca entram no sandbox nem no Git.
