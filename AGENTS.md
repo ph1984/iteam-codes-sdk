@@ -151,3 +151,38 @@ rows = iteam_query("ch_query", sql="SELECT ...")   # ex.: MCP ClickHouse de um a
 res  = iteam_call("alguma_tool", **args)           # HTTP tool / learned API / MCP
 ```
 O backend acha QUAL agente do projeto tem a tool e executa com a credencial dele (cofre) — o segredo nunca chega ao seu código. Tirou o agente do projeto → a tool some do catálogo e para de funcionar.
+
+## Tipos de Code: job · service · app (service_farm)
+Todo Code tem **`kind`** (default `job`) + **título** (`name`) + **descrição**:
+- **`job`** — roda e termina (o clássico; efêmero no Daytona). Usa `get_input()`/`result()`.
+- **`service`** — **API HTTP persistente** (vários endpoints, vários arquivos) rodando na *service-farm*, atrás do gateway (`https://svc.iteam.works/s/<projectId>/<slug>/…`). Escute em `process.env.PORT`.
+- **`app`** — **microfront** (várias telas num deploy) servido pela farm (`/a/<projectId>/<slug>/…`), protegido por login iTeam (ou público).
+
+**Documente o contrato** (os AGENTES do projeto leem isto pra saber o que existe e como usar):
+- service → `endpoints`: `[{ "method":"GET", "path":"/hello", "summary":"diz oi", "inputSchema":{…}, "outputSchema":{…} }]`
+- app → `screens`: `[{ "title":"Home", "path":"/" }, { "title":"Vendas", "path":"/vendas", "description":"…" }]`
+
+**Robustez — TESTES:** defina `testCommand` (ex.: `"npm test"`, `"pytest -q"`). No deploy, os testes rodam dentro da imagem buildada **antes** de subir o container; **se falharem, o deploy é abortado** (nada quebrado no ar). O resultado fica visível na tela do Code.
+
+### Pull → evoluir → deploy (via token do projeto)
+```bash
+# 1) PULL: entende o que é o Code (kind, endpoints/screens, testCommand, deploy.url) e continua de onde parou
+curl -H "Authorization: Bearer $ITEAM_PROJECT_TOKEN" $ITEAM_API_URL/api/project/codes/<id>/pull
+# 2) evolua os arquivos e re-suba com o MESMO slug (atualiza, não duplica)
+curl -X POST -H "Authorization: Bearer $ITEAM_PROJECT_TOKEN" -H "Content-Type: application/json" \
+  -d '{"name":"Minha API","slug":"minha-api","language":"node","kind":"service","public":false,
+       "code":"…server.js…","files":[…],"endpoints":[{"method":"GET","path":"/hello"}],
+       "testCommand":"npm test"}' \
+  $ITEAM_API_URL/api/project/codes
+# 3) DEPLOY (build + testes + run na farm) — devolve a URL pública
+curl -X POST -H "Authorization: Bearer $ITEAM_PROJECT_TOKEN" $ITEAM_API_URL/api/project/codes/<id>/deploy
+# status/URL
+curl -H "Authorization: Bearer $ITEAM_PROJECT_TOKEN" $ITEAM_API_URL/api/project/codes/<id>/deploy-status
+```
+
+### Os AGENTES do projeto conhecem e usam as APIs/telas
+Um agente que está no projeto ganha tools nativas:
+- **`proj_list_services`** — lista os services (APIs) e apps (telas) do projeto, com título, descrição, endpoints e telas.
+- **`proj_call_service`** — chama um endpoint de um service que está NO AR (`slug` + `path` + `method`/`body`). Para services protegidos, o backend autentica o agente automaticamente (sem segredo no código).
+
+Ou seja: o agente descobre as APIs do próprio projeto e as usa — do mesmo jeito que chama os Codes (`proj_list_codes`/`proj_run_code`).
