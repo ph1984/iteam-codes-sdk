@@ -9,7 +9,7 @@ No sandbox (deploy) o iTeam injeta o acesso automaticamente — você não muda 
 
 Você NUNCA coloca credencial de recurso/agente: o backend resolve pelo token do projeto e
 executa server-side (secrets ficam no cofre). Recursos:
-  from iteam import resources, agent_tools, iteam_call, iteam_query, kv, datastore, db, result
+  from iteam import resources, agent_tools, iteam_call, iteam_query, kv, datastore, db, get_input, result
   resources()            # recursos de dados alocados (kv/datastore/db)
   agent_tools()          # tools dos AGENTES do projeto (MCP/HTTP/learned) — chame por iteam_call
   kv.set/get/...         # cache/estado do projeto
@@ -76,5 +76,14 @@ class _DB:
     def columns(self, table): return iteam_call("db_columns", table=table)
 db = _DB()
 
+def get_input():
+    """Parâmetros de ENTRADA deste run (dict). Vêm de quem chamou o Code — agente (proj_run_code),
+    endpoint HTTP (POST .../run {input}) ou UI. Declare o contrato no manifest.inputSchema."""
+    try:
+        return json.loads(os.environ.get("ITEAM_INPUT") or "{}")
+    except Exception:
+        return {}
+
 def result(value):
+    """Saída ESTRUTURADA do Code (é o que o chamador recebe). Declare o formato em manifest.outputSchema."""
     print("__ITEAM_RESULT__" + json.dumps(value, default=str))

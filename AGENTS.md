@@ -4,10 +4,28 @@ Você (IA em Claude Code / Cursor / VS Code / Copilot) está ajudando a criar e 
 **Codes do iTeam**: scripts Python/Node que rodam num sandbox efêmero isolado, com
 recursos escopados por projeto e agendamento. Leia este guia inteiro antes de agir.
 
+## ⚠️ ANTES DE COMEÇAR — pergunte o PROJETO e faça PULL (não comece do zero)
+1. Pergunte ao usuário o **ID do projeto** e o **token do projeto** (`pct_...`, aba Codes). Coloque o token no `.env` (`ITEAM_PROJECT_TOKEN`), NUNCA no git.
+2. Descubra onde você está e o que já existe:
+   ```bash
+   curl -s $ITEAM_API/api/project/codes/context -H "Authorization: Bearer $ITEAM_PROJECT_TOKEN"   # → { projectId }
+   curl -s $ITEAM_API/api/project/codes         -H "Authorization: Bearer $ITEAM_PROJECT_TOKEN"   # lista os Codes (slug, contrato I/O)
+   ```
+3. Se vai MEXER num Code existente, faça **PULL** primeiro (continua de onde parou, não recria do zero):
+   ```bash
+   curl -s $ITEAM_API/api/project/codes/CODE_ID/pull -H "Authorization: Bearer $ITEAM_PROJECT_TOKEN"
+   # → { name, slug, language, code, files[], inputSchema, outputSchema, envKeys, ... }  (o .env NÃO vem — só as chaves)
+   ```
+   Grave `code` em `main.py` e cada `files[].content` no `files[].path`. Edite. Depois faça deploy com o MESMO slug (atualiza, não duplica).
+
+`$ITEAM_API` = https://api.iteam.works (prod) ou https://stg.api.iteam.works (hom).
+
 ## O que é um Code
-- Um entrypoint (`main.py` ou `main.js`) + arquivos extras opcionais.
+- Um entrypoint (`main.py` ou `main.js`) + arquivos extras opcionais — pode ser um **mini-serviço** parametrizável.
 - Roda isolado (cria→roda→destrói). Sem estado entre runs, EXCETO o que você salvar no `kv`.
 - Recebe um token de projeto assinado via ambiente — **você nunca escreve credenciais no código**.
+- **Parametrizável (entrada/saída)**: `input = get_input()` lê os parâmetros de quem chamou; `result({...})` devolve a saída. Declare o contrato no deploy (`inputSchema` / `outputSchema`) — é isso que os **agentes** e os endpoints usam pra saber como chamar e o que esperam.
+- **Chamável pelos agentes do projeto**: se `published: true` (default), os agentes do projeto executam o Code via `proj_run_code(slug, input)` e recebem o `result` — a base dos microserviços.
 
 ## SDK (importe e use)
 ```python
@@ -52,11 +70,15 @@ como chamar cada uma sem adivinhar. Some naturalmente o Atlas/descrição do rec
      -H "Authorization: Bearer pct_TOKEN" -H "Content-Type: application/json" \
      -d '{"name":"NOME ESTÁVEL","language":"python","code":"<conteúdo de main.py>",
           "files":[{"path":"lib/util.py","content":"..."}],
-          "schedule":"0 6 * * *", "env":{"X":"y"}}'
+          "schedule":"0 6 * * *", "env":{"X":"y"},
+          "published": true,
+          "inputSchema": {"type":"object","properties":{"segment":{"type":"string"},"limit":{"type":"integer"}},"required":["segment"]},
+          "outputSchema": {"type":"object","properties":{"rows":{"type":"array"}}}}'
    # → { "codeId": "...", "slug": "...", "name": "..." }  ← guarde codeId/slug p/ atualizar
    ```
    `$ITEAM_API` = https://api.iteam.works (prod) ou https://stg.api.iteam.works (hom).
-5. Rodar: `POST $ITEAM_API/api/project/codes/CODE_ID/run` → `{ runId }`.
+   `inputSchema`/`outputSchema` = contrato do mini-serviço (o que agentes/endpoints veem). `published:true` = chamável pelos agentes.
+5. Rodar: `POST $ITEAM_API/api/project/codes/CODE_ID/run` com body `{"input": {...}}` → `{ runId }`.
 6. Ver resultado: `GET $ITEAM_API/api/project/codes/CODE_ID/runs/RUN_ID` → status/stdout/**result**.
 
 ## Multi-arquivo
@@ -74,6 +96,18 @@ n = rows[0]["n"] if rows else 0
 prev = kv.get("ontem") or 0
 kv.set("ontem", n, ttl=7*24*3600)
 result({"ok": True, "hoje": n, "delta": n - prev})
+```
+
+## Exemplo PARAMETRIZADO (mini-serviço chamável por agente)
+```python
+from iteam import get_input, datastore, result
+inp = get_input()                       # ex.: {"segment": "Campeoes", "limit": 20}
+seg = inp.get("segment"); lim = int(inp.get("limit", 50))
+rows = datastore.query(
+    f"SELECT user_id, monetary FROM rfm_daily WHERE segment = '{seg}' ORDER BY monetary DESC LIMIT {lim}")
+result({"segment": seg, "count": len(rows), "rows": rows})
+# Deploy com inputSchema/outputSchema + published:true → um agente do projeto chama:
+#   proj_run_code(slug="rfm-por-segmento", input={"segment":"Campeoes","limit":10})
 ```
 
 ## Recursos de dados do projeto (farm_resources) — PEGUE PRIMEIRO
