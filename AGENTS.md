@@ -65,6 +65,29 @@ from iteam import kv, datastore, iteam_call, iteam_query, iteam_tools, result
 - `db.query/execute/tables/columns` — **Postgres** relacional do projeto (read+write, se alocado).
 - `agent_tools()` — catálogo das tools dos AGENTES do projeto (nome + schema). Chame por `iteam_call`/`iteam_query`.
 - `resources()` — recursos de dados alocados no projeto (kv/datastore/db).
+
+## ⚡ Regras que evitam dor de cabeça (leia antes de mexer com dados)
+
+### A) Recurso inativo? PARE e guie o usuário a ativar
+Antes de usar **Data Store (ClickHouse)** ou **banco (Postgres)**, cheque `resources()`. Se o recurso que
+você precisa **não estiver ativo** (não aparece na lista), **NÃO invente outro caminho** — explique ao usuário,
+em português, que ele precisa ativar (é 1 clique, sem custo de configuração):
+
+> "Pra guardar/consultar dados eu preciso do **Data Store** ativo. No iTeam, abra seu projeto → aba **Codes** →
+> card **Data Store (ClickHouse)** → botão **Ativar recurso**. Depois disso ele fica **read+write isolado** do seu
+> projeto e eu consigo criar tabelas e gravar. Me avisa quando ativar que eu sigo."
+
+O mesmo vale pro **Postgres** (card "Banco de dados"). Só prossiga com a gravação **depois** de o recurso aparecer
+em `resources()`. (Sem Data Store ativo, `datastore.query` só lê o compartilhado — não grava.)
+
+### B) SEMPRE pagine — nunca retorne/consulte "tudo" (senão estoura)
+- Em **endpoints de lista** (service), aceite `?limit=` e `?offset=` (ou cursor). **Default `limit=50`, teto `200`.**
+  Devolva `{ items, total, limit, offset }`. Nunca faça `SELECT *` sem `LIMIT`.
+- Em **queries** no Data Store/DB, sempre ponha `LIMIT` (e `WHERE`/período). Pra somar/contar, **agregue no SQL**
+  (`count()`, `sum()`, `group by`) em vez de trazer linhas e somar no código.
+- Em **telas (artefato)** que listam, busque paginado (`?limit=&offset=`) e carregue mais sob demanda.
+- Documente os parâmetros no `inputSchema` de cada endpoint — assim o "try it" da tela vira **campos** (o leigo
+  não digita JSON) e os agentes sabem chamar.
 - `iteam_call(tool, **args)` / `iteam_query(...)` — executa uma tool de agente/projeto (MCP, HTTP, APIs aprendidas).
 - `result({...})` — **SEMPRE** retorne o resultado estruturado com isto (vira `run.result`). NÃO confie em "última linha".
 

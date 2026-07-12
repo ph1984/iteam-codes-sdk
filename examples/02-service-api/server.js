@@ -9,7 +9,12 @@ const server = http.createServer((req, res) => {
   const url = new URL(req.url, 'http://x');
   const p = url.pathname;
   if (p === '/' || p === '/health') return send(res, 200, { ok: true, service: 'Tarefas API' });
-  if (p === '/tarefas' && req.method === 'GET') return send(res, 200, { tarefas });
+  if (p === '/tarefas' && req.method === 'GET') {
+    // SEMPRE pagine: limit (default 50, teto 200) + offset. Nunca devolva "tudo".
+    const limit = Math.min(parseInt(url.searchParams.get('limit') || '50', 10) || 50, 200);
+    const offset = parseInt(url.searchParams.get('offset') || '0', 10) || 0;
+    return send(res, 200, { items: tarefas.slice(offset, offset + limit), total: tarefas.length, limit, offset });
+  }
   if (p === '/tarefas' && req.method === 'POST') {
     let body = ''; req.on('data', c => body += c);
     req.on('end', () => {

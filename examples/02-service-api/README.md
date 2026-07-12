@@ -19,8 +19,10 @@ curl -X POST $ITEAM_API/api/project/codes -H "Authorization: Bearer $ITEAM_PROJE
     "files":[{"path":"test.js","content":"<conteudo de test.js>"}],
     "endpoints":[
       {"method":"GET","path":"/health","summary":"status"},
-      {"method":"GET","path":"/tarefas","summary":"lista"},
-      {"method":"POST","path":"/tarefas","summary":"cria"},
+      {"method":"GET","path":"/tarefas","summary":"lista (paginada)",
+        "inputSchema":{"type":"object","properties":{"limit":{"type":"number"},"offset":{"type":"number"}}}},
+      {"method":"POST","path":"/tarefas","summary":"cria",
+        "inputSchema":{"type":"object","properties":{"titulo":{"type":"string"}},"required":["titulo"]}},
       {"method":"GET","path":"/tarefas/:id","summary":"por id"}
     ],
     "testCommand":"node test.js"
