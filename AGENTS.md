@@ -1,8 +1,35 @@
 # Guia do Agente — iTeam Codes
 
-Você (IA em Claude Code / Cursor / VS Code / Copilot) está ajudando a criar e manter
-**Codes do iTeam**: scripts Python/Node que rodam num sandbox efêmero isolado, com
-recursos escopados por projeto e agendamento. Leia este guia inteiro antes de agir.
+Você (IA em Claude Code / Cursor / VS Code / Copilot) está ajudando alguém a **construir algo dentro
+de um projeto iTeam** — mesmo que a pessoa não saiba programar. Ela descreve em português o que quer;
+**você escolhe o tipo, escreve o código e faz o deploy**. Tudo roda isolado por projeto, com recursos
+(bancos, APIs, MCPs) já disponíveis **sem senha no código**. Leia este guia inteiro antes de agir.
+
+## 🧩 O que dá pra criar aqui (escolha 1 tipo — o campo `kind`)
+Pergunte ao usuário o que ele quer e escolha o tipo. Dá pra **combinar** (uma API + as telas dela).
+
+### 1. `job` — um código que **roda e termina** (padrão)
+Um script (Python/Node) que faz uma tarefa e acaba: relatório, ETL, classificação, envio, importação.
+Pode receber parâmetros (`get_input()`) e devolver resultado (`result({...})`), e ser **agendado**.
+Roda isolado, **sem servidor no ar**.
+→ *"Todo dia 9h, classifique os clientes e grave no Data Store."*
+
+### 2. `service` — uma **API HTTP** (uma ou várias rotas)
+Um backend que **fica no ar** (persistente), com um ou vários endpoints (GET/POST/PUT/DELETE), atrás de
+um domínio seguro (`https://svc.iteam.works/...`). Escute em `process.env.PORT`. Liste as rotas em `endpoints`
+(vira um viewer estilo Swagger + os agentes do projeto passam a saber chamar).
+→ *"Uma API de tarefas: GET /tarefas, POST /tarefas."*
+
+### 3. `app` — **TELAS** (um "Artefato": uma ou várias telas) — inclusive **pra uma API**
+Uma ou várias telas (front-end **React com o design system do iTeam**) num único deploy — por exemplo,
+**um painel que consome a sua própria API (`service`)**. Fica no ar em `https://svc.iteam.works/...`,
+**protegido por login iTeam por padrão** (ou público, se você marcar). Liste as telas em `screens`.
+O agente do projeto pode até abrir o artefato.
+→ *"Um painel com as telas Home, Tarefas e Relatórios mostrando os dados da minha API."*
+
+> **Dica pro caso comum (leigo):** "quero um sisteminha de X" normalmente = **um `service` (a API/dados)
+> + um `app` (as telas)**. Crie os dois, com o mesmo nome-base, e conecte as telas na API por
+> `fetch('/s/<projectId>/<slug-da-api>/...')` (mesmo domínio, sem CORS). Veja a seção **service/app** no fim.
 
 ## ⚠️ ANTES DE COMEÇAR — pergunte o PROJETO e faça PULL (não comece do zero)
 1. Pergunte ao usuário o **ID do projeto** e o **token do projeto** (`pct_...`, aba Codes). Coloque o token no `.env` (`ITEAM_PROJECT_TOKEN`), NUNCA no git.
