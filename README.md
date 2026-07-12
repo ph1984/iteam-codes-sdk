@@ -1,66 +1,105 @@
-# iTeam Codes SDK
+# iTeam Codes SDK — construa **jobs, APIs e telas** no seu projeto iTeam
 
-SDK oficial dos **Codes** do iTeam — scripts Python/Node que você escreve na sua
-IDE favorita (Claude Code, Cursor, VS Code, …), versiona no Git e faz **deploy via
-API** para rodar em sandbox efêmero isolado, com **agendamento** e **recursos
-escopados por projeto** (cache/KV, Data Store) — **sem nunca colocar credenciais no código**.
+> **Você não precisa saber programar.** Abra este projeto no **Claude Code / Cursor / VS Code (Copilot)**,
+> descreva em português o que você quer, e a IA escreve o código, cria e publica pra você — usando os
+> recursos do seu projeto (bancos, APIs, MCPs) **sem você mexer em senha nenhuma**.
 
-## Como usar na sua IDE (Claude Code / Cursor / VS Code)
+---
 
-1. Peça para a IA clonar este SDK e ler a documentação:
-   > "Clone https://github.com/ph1984/iteam-codes-sdk e crie um Code que
-   >  soma os pedidos de ontem no Data Store e salva o total no kv."
-2. Escreva seu script (`main.py` ou `main.js`) importando o SDK:
-   ```python
-   from iteam import kv, datastore
-   rows = datastore.query("SELECT count() AS n FROM pedidos WHERE dia = today()-1")
-   kv.set("pedidos_ontem", rows[0]["n"], ttl=86400)
-   print({"ok": True, "n": rows[0]["n"]})   # última linha JSON vira o "result" do run
-   ```
-3. Coloque segredos SÓ no `.env` (nunca no código, nunca no Git — já está no `.gitignore`).
+## 🧭 O que dá pra criar (3 tipos)
 
-## Deploy (via API, com o token do projeto)
-
-O token (`pct_...`) fica na aba **Codes** do seu projeto no iTeam. Ele identifica o
-projeto — todo Code que você deploya com ele pertence a esse projeto.
-
-```bash
-# cria OU atualiza um Code (idempotente por slug — reenviar NÃO duplica)
-curl -X POST https://api.iteam.works/api/project/codes \
-  -H "Authorization: Bearer pct_SEU_TOKEN" -H "Content-Type: application/json" \
-  -d '{ "name": "Resumo diário", "language": "python",
-        "code": "from iteam import kv\nprint({\"ok\":True})",
-        "schedule": "0 6 * * *" }'      # cron opcional → roda sozinho
-# resposta: { "codeId": "...", "slug": "resumo-diario", "name": "..." }
-# GUARDE o codeId/slug: reenviar com o mesmo slug ATUALIZA o mesmo Code.
-
-curl -X POST https://api.iteam.works/api/project/codes/CODE_ID/run \
-  -H "Authorization: Bearer pct_SEU_TOKEN"          # dispara → { runId }
-
-curl https://api.iteam.works/api/project/codes/CODE_ID/runs/RUN_ID \
-  -H "Authorization: Bearer pct_SEU_TOKEN"          # status + stdout + result
+```
+                          ┌───────────────────────────────────────────────┐
+                          │            SEU PROJETO no iTeam                 │
+                          │   (dados, APIs, MCPs, agentes — já conectados)  │
+                          └───────────────────────────────────────────────┘
+                                            │  (a IA usa tudo isso sem senha)
+             ┌──────────────────────────────┼──────────────────────────────┐
+             ▼                              ▼                               ▼
+   ┌───────────────────┐         ┌────────────────────┐          ┌─────────────────────┐
+   │   1) JOB           │         │   2) SERVICE (API) │          │  3) ARTEFATO (telas) │
+   │  roda e termina    │         │  fica no ar 24/7   │          │  1+ telas (React)    │
+   │  (relatório, ETL,  │         │  1+ endpoints HTTP │          │  bonitas, DS iTeam   │
+   │  classificação…)   │         │  GET/POST/…        │          │  podem usar a API    │
+   │  pode ser agendado │         │  svc.iteam.works/s │          │  svc.iteam.works/a   │
+   └───────────────────┘         └────────────────────┘          └─────────────────────┘
+         "todo dia 9h              "uma API de tarefas             "um painel com Home,
+          gera o relatório"         com GET/POST /tarefas"          Vendas e Relatórios"
 ```
 
-## Recursos escopados (sem credencial no código)
+| Tipo | O que é | Quando usar | Exemplo |
+|------|---------|-------------|---------|
+| **Job** | Um código que **roda e termina** | tarefa pontual ou agendada | [examples/01-job-relatorio](examples/01-job-relatorio) |
+| **Service** | Uma **API HTTP** que fica no ar | expor dados/ações via endpoints | [examples/02-service-api](examples/02-service-api) |
+| **Artefato** | **Telas** (React) que ficam no ar | um painel/app pro usuário ver e usar | [examples/03-artefato-painel](examples/03-artefato-painel) |
 
-| API | O que é |
-|-----|---------|
-| `kv.get/set/delete/incr/keys` | Cache/estado chave-valor **isolado por projeto** (Redis no servidor) |
-| `datastore.query/tables/columns` | **Data Store** analítico do projeto (ClickHouse) — **read+write** quando alocado |
-| `db.query/execute/tables/columns` | **Postgres** relacional do projeto (read+write, quando alocado) |
-| `resources()` | Recursos de dados alocados no projeto (kv/datastore/db) |
-| `agent_tools()` | Catálogo das tools dos **agentes** do projeto (nome + schema) — some se tirar o agente |
-| `iteam_call(tool, **args)` / `iteam_query(...)` | Executa uma tool de agente/projeto (MCP, HTTP, APIs aprendidas) |
+> **Dica:** "quero um sisteminha de X" quase sempre = **um Service (a API) + um Artefato (as telas)**. Crie os dois.
 
-O iTeam injeta um token de projeto **assinado e efêmero** no sandbox em cada run;
-o SDK usa esse token. Suas credenciais nunca entram no sandbox nem no Git.
+---
 
-## Agendamento
+## 🚀 Começando em 3 passos (pro leigo)
 
-Defina `schedule` (cron) no Code — ele roda sozinho, como uma tarefa agendada.
-Ex.: `*/15 * * * *` (a cada 15min), `0 6 * * *` (todo dia 6h).
+1. **Pegue seu projeto e a chave.** No iTeam, entre no seu projeto → aba **Codes** → botão **"Copiar prompt pro Claude"**.
+   Ele copia um texto que já vem com o **ID do projeto e a chave (`pct_...`)**.
+2. **Cole no Claude Code** (ou Cursor/VS Code) dentro desta pasta. A IA vai ler o [AGENTS.md](AGENTS.md), se conectar
+   ao seu projeto e te perguntar o que você quer criar.
+3. **Descreva em português.** Ex.: *"Quero uma API de tarefas e um painel bonito pra ver e criar tarefas."*
+   A IA escreve, testa, publica e te devolve o **link** (https://svc.iteam.works/...).
 
-## Persistência de trabalho
+Nada de senha no código: a chave fica só no `.env` (que **nunca** vai pro git). Tudo roda **isolado no seu projeto**.
 
-Cada run tem um SQLite efêmero (`scratch.sqlite`, via `CODE_SCRATCH_DB`) para
-trabalho local — descartado ao fim do run. Para estado durável, use `kv`.
+---
+
+## 🔒 Seguro por padrão
+
+- **Telas e APIs nascem protegidas**: só **quem tem acesso ao projeto** (logado no iTeam) abre. Você pode marcar como
+  público se quiser.
+- **Acesso externo por token**: sistemas de fora chamam sua API mandando o **token do usuário** no header `X-Iteam-Token`.
+- **Nada de credencial no código**: os recursos do projeto são resolvidos no servidor. A chave do projeto (`pct_`)
+  fica no `.env`, fora do git.
+- Detalhes: [docs/SEGURANCA.md](docs/SEGURANCA.md).
+
+---
+
+## 🗺️ Como funciona por dentro (sem jargão)
+
+```
+  Você (Claude/Cursor)  ──①──►  API do iTeam  ──②──►  Service Farm (máquina dedicada)
+   escreve o código            recebe o deploy         builda + roda seu código
+        ▲                            │                      │
+        │                            │                  ┌───┴────────────┐
+        └──────④ link ───────────────┘                  │  seu container │  → svc.iteam.works
+                                                         └────────────────┘   (com TLS + login)
+   ③ se for API, roda testes antes de subir — se falhar, NÃO publica (nada quebrado no ar).
+```
+
+1. A IA manda seu código pra API do iTeam (com a chave `pct_`).
+2. A **Service Farm** (isolada, não sobrecarrega o iTeam) faz o *build* e sobe seu container.
+3. Se você definiu **testes**, eles rodam antes — deploy só acontece se passarem.
+4. Você recebe o **link** pronto (domínio + HTTPS + login do iTeam).
+
+Mais diagramas e detalhes: [docs/ARQUITETURA.md](docs/ARQUITETURA.md).
+
+---
+
+## 📚 Índice
+- **[AGENTS.md](AGENTS.md)** — o guia que a IA lê (fluxo pull→editar→deploy, SDK, contratos).
+- **[examples/](examples)** — exemplos prontos dos 3 tipos, cada um com seu README explicando.
+- **[docs/ARQUITETURA.md](docs/ARQUITETURA.md)** — como tudo se encaixa (diagramas).
+- **[docs/SEGURANCA.md](docs/SEGURANCA.md)** — proteção, tokens, o que é público/privado.
+- **[docs/FAQ.md](docs/FAQ.md)** — perguntas comuns do usuário leigo.
+
+---
+
+## 🧰 SDK (quando a IA escreve código Python/Node)
+```python
+from iteam import kv, datastore, db, agent_tools, iteam_call, iteam_query, get_input, result
+```
+- `kv` — cache/estado chave-valor isolado por projeto (Redis).
+- `datastore.query(sql)` — Data Store analítico (ClickHouse) do projeto.
+- `db` — Postgres relacional do projeto.
+- `agent_tools()` / `iteam_call` / `iteam_query` — usa as ferramentas dos **agentes** do projeto (MCP/APIs) sem senha.
+- `get_input()` / `result()` — entrada/saída de um **job** parametrizável.
+
+O mesmo código roda **local** (na sua IDE, com o token do projeto) e **no deploy** (o iTeam injeta o acesso).
+Você nunca manuseia segredo.
