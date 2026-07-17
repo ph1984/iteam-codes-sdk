@@ -250,14 +250,16 @@ Quando alguém acessa seu deploy protegido, o **gateway do iTeam valida o login*
 **confiáveis** na requisição que chega ao seu container (o navegador **não** consegue forjá-los — quem
 fala com o container é só o gateway, que sobrescreve esses headers):
 
-| Header | O que é |
-|---|---|
-| `X-Iteam-User` | id do usuário logado |
-| `X-Iteam-Role` | papel dele **na empresa** (`owner`/`admin`/`manager`/`member`/`viewer`) |
-| `X-Iteam-Project-Role` | papel dele **neste projeto** (`owner`/`admin`/`manager`/`member`/`viewer`) |
+| Header | O que é | Valores possíveis |
+|---|---|---|
+| `X-Iteam-User` | id do usuário logado | (id) |
+| `X-Iteam-Role` | papel dele **na empresa** | `owner`, `admin`, `manager`, `member`, `viewer` |
+| `X-Iteam-Project-Role` | papel dele **neste projeto** | `owner` (criou o projeto), `admin` (é owner/admin da empresa), `editor` ou `viewer` (foi compartilhado nesse nível) |
 
 `owner`/`admin` da empresa e o **dono do projeto** (`owner`) **sempre podem tudo**. Em `job`/local/rota
-pública não há login → os headers vêm vazios (o SDK trata como anônimo).
+pública não há login → os headers vêm vazios (o SDK trata como anônimo). O `can()` casa o papel contra
+**os dois** headers (empresa e projeto), então tanto `can(me, "manager")` (papel de empresa) quanto
+`can(me, "editor")` (papel de projeto compartilhado) funcionam.
 
 ### O SDK faz o trabalho pesado (Python **e** Node)
 ```python
@@ -280,9 +282,9 @@ a rota no backend com `require_role()`; o `menu()` no front é só pra não most
 
 ### 1) `service` — proteja a ROTA (autoritativo)
 ```js
-// só admin/manager apagam; qualquer outro papel toma 403 (não estoura, você devolve a resposta)
+// só admin/editor apagam; qualquer outro papel toma 403 (não estoura, você devolve a resposta)
 if (m && req.method === 'DELETE') {
-  const deny = require_role(req, 'admin', 'manager');
+  const deny = require_role(req, 'admin', 'editor');
   if (deny) return send(res, deny.status, deny.body);   // { error, message, need, have }
   // ... apaga ...
 }
@@ -300,13 +302,17 @@ const [me, setMe] = useState(null);
 useEffect(() => { fetch('/s/<projectId>/<slug-da-api>/whoami').then(r => r.json()).then(setMe); }, []);
 const telas = [
   { title: 'Início', path: '/' },
-  { title: 'Vendas', path: '/vendas', roles: ['admin', 'manager'] },
+  { title: 'Vendas', path: '/vendas', roles: ['admin', 'editor'] },
   { title: 'Configuração', path: '/config', roles: ['admin'] },
 ].filter(t => !t.roles || (me && [me.role, me.projectRole].some(r => t.roles.includes(r))) || me?.role === 'owner' || me?.role === 'admin');
 ```
 
 ### Quais papéis usar
-Use os papéis que a empresa/projeto já tem: `owner`, `admin`, `manager`, `member`, `viewer`. Se o usuário
-descrever papéis próprios ("caixa", "supervisor"), pergunte a ele e mapeie pro papel mais próximo — não
-invente um esquema de permissão paralelo. Pergunte SEMPRE, em português, **quem deve ver/poder cada tela
-e cada rota** antes de assumir que é tudo liberado.
+Os papéis vêm do iTeam (você não cria login). Na prática, o **papel de PROJETO** (`X-Iteam-Project-Role`)
+que chega é um destes: `owner` (quem criou o projeto), `admin` (owner/admin da empresa), `editor` ou
+`viewer` (quem foi compartilhado nesse nível na tela do projeto). Além disso existe o **papel de EMPRESA**
+(`X-Iteam-Role`): `owner`/`admin`/`manager`/`member`/`viewer`. O `can()` casa contra os dois, então prefira
+declarar em cima de `owner/admin/editor/viewer` (papel de projeto) e use os de empresa (`manager`/`member`)
+só se fizer sentido pro caso. Se o usuário descrever papéis próprios ("caixa", "supervisor"), mapeie pro
+mais próximo — NÃO invente um esquema paralelo. Pergunte SEMPRE, em português, **quem deve ver/poder cada
+tela e cada rota** antes de assumir que é tudo liberado.
