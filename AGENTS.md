@@ -32,6 +32,21 @@ O agente do projeto pode até abrir o artefato.
 > `fetch('/s/<projectId>/<slug-da-api>/...')` (mesmo domínio, sem CORS). Veja a seção **service/app** no fim.
 
 ## ⚠️ ANTES DE COMEÇAR — pergunte o PROJETO e faça PULL (não comece do zero)
+
+> **0. ATUALIZE O SDK PRIMEIRO (sempre, antes de escrever qualquer linha).** Este repo evolui e ganha
+> recursos novos com o tempo (ex.: o RBAC `user/can/require_role/menu` só existe a partir de julho/2026).
+> Se você — ou o projeto — já clonou isto antes, **quem tem uma cópia antiga NÃO enxerga o que veio depois**
+> e vai ou reimplementar coisa na mão ou usar algo que não bate com o servidor. Então:
+> ```bash
+> git -C iteam-codes-sdk pull        # se já tem o repo
+> # ou, se ainda não tem:
+> git clone https://github.com/ph1984/iteam-codes-sdk
+> ```
+> Depois do `pull`, **releia este AGENTS.md** (ele também é atualizado) e confira o `iteam.py`/`iteam.js`.
+> O SDK é mantido **retrocompatível** — as mudanças são **aditivas/opt-in**, então Codes existentes seguem
+> funcionando e atualizar é seguro; qualquer quebra intencional vem anotada aqui em destaque. Na dúvida,
+> atualize: o custo é zero e evita usar uma API que já mudou.
+
 1. Pergunte ao usuário o **ID do projeto** e o **token do projeto** (`pct_...`, aba Codes). Coloque o token no `.env` (`ITEAM_PROJECT_TOKEN`), NUNCA no git.
 2. Descubra onde você está e o que já existe:
    ```bash
