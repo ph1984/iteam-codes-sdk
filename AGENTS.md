@@ -65,6 +65,7 @@ from iteam import kv, datastore, iteam_call, iteam_query, iteam_tools, result
 - `db.query/execute/tables/columns` — **Postgres** relacional do projeto (read+write, se alocado).
 - `agent_tools()` — catálogo das tools dos AGENTES do projeto (nome + schema). Chame por `iteam_call`/`iteam_query`.
 - `resources()` — recursos de dados alocados no projeto (kv/datastore/db).
+- `user/can/require_role/menu` — **RBAC** (quem está logado + o que cada papel pode ver/chamar). Opt-in. Veja **🔐 Acesso por papel (RBAC)** no fim.
 
 ## ⚡ Regras que evitam dor de cabeça (leia antes de mexer com dados)
 
@@ -236,3 +237,76 @@ Um agente que está no projeto ganha tools nativas:
 - **`proj_call_service`** — chama um endpoint de um service que está NO AR (`slug` + `path` + `method`/`body`). Para services protegidos, o backend autentica o agente automaticamente (sem segredo no código).
 
 Ou seja: o agente descobre as APIs do próprio projeto e as usa — do mesmo jeito que chama os Codes (`proj_list_codes`/`proj_run_code`).
+
+## 🔐 Acesso por papel (RBAC) — quem vê/pode o quê (opt-in)
+Um `service`/`app` protegido (`public:false`, o padrão) só é acessível por **membros do projeto**. Às
+vezes isso não basta: dentro do mesmo app você quer que **só o gestor** veja a tela de configuração, ou
+que **só admin/manager** possa apagar. O iTeam já sabe **quem é** cada pessoa e **qual o papel dela** —
+você só decide o que cada papel pode. **É tudo opt-in: se você não fizer nada, todo membro vê tudo (o
+comportamento de hoje — não quebra nada).**
+
+### Como funciona (você não faz login, não vê senha)
+Quando alguém acessa seu deploy protegido, o **gateway do iTeam valida o login** e injeta 3 headers
+**confiáveis** na requisição que chega ao seu container (o navegador **não** consegue forjá-los — quem
+fala com o container é só o gateway, que sobrescreve esses headers):
+
+| Header | O que é |
+|---|---|
+| `X-Iteam-User` | id do usuário logado |
+| `X-Iteam-Role` | papel dele **na empresa** (`owner`/`admin`/`manager`/`member`/`viewer`) |
+| `X-Iteam-Project-Role` | papel dele **neste projeto** (`owner`/`admin`/`manager`/`member`/`viewer`) |
+
+`owner`/`admin` da empresa e o **dono do projeto** (`owner`) **sempre podem tudo**. Em `job`/local/rota
+pública não há login → os headers vêm vazios (o SDK trata como anônimo).
+
+### O SDK faz o trabalho pesado (Python **e** Node)
+```python
+from iteam import user, can, require_role, menu
+me = user(request.headers)          # {"userId","role","projectRole"}  (Flask/FastAPI)
+can(me, "admin", "manager")         # → bool. DEFAULT-DENY. owner/admin/dono sempre True.
+require_role(request.headers, "admin")   # guarda de ROTA: None (segue) ou um 403 pronto
+menu(telas, me)                     # filtra a lista de telas pelo papel (pro app montar o menu)
+```
+```js
+const { user, can, require_role, menu } = require('./iteam');   // mesma API em Node
+const me = user(req);                       // passe o `req` do Node/Express OU os headers
+if (!can(me, 'admin')) { /* ... */ }
+```
+
+### Regra de ouro (NÃO viole): esconder a tela é só UX
+Esconder um item de menu **não protege o dado**. Uma tela censurada **exige** que a rota/dados por
+trás também sejam censurados no `service` — senão a pessoa acessa a URL/API na mão. **Sempre** proteja
+a rota no backend com `require_role()`; o `menu()` no front é só pra não mostrar o que a pessoa não usa.
+
+### 1) `service` — proteja a ROTA (autoritativo)
+```js
+// só admin/manager apagam; qualquer outro papel toma 403 (não estoura, você devolve a resposta)
+if (m && req.method === 'DELETE') {
+  const deny = require_role(req, 'admin', 'manager');
+  if (deny) return send(res, deny.status, deny.body);   // { error, message, need, have }
+  // ... apaga ...
+}
+```
+
+### 2) `app` (telas React) — o front descobre o papel via `/whoami`
+O front **estático não enxerga os headers** — quem os recebe é o container. Então o app pergunta ao seu
+`service` companheiro "quem sou eu?" e monta o menu conforme o papel. No `service`, exponha:
+```js
+if (p === '/whoami') return send(res, 200, user(req));   // { userId, role, projectRole }
+```
+No React, busque isso e filtre o menu (peça ao `service`, não confie só no cliente):
+```jsx
+const [me, setMe] = useState(null);
+useEffect(() => { fetch('/s/<projectId>/<slug-da-api>/whoami').then(r => r.json()).then(setMe); }, []);
+const telas = [
+  { title: 'Início', path: '/' },
+  { title: 'Vendas', path: '/vendas', roles: ['admin', 'manager'] },
+  { title: 'Configuração', path: '/config', roles: ['admin'] },
+].filter(t => !t.roles || (me && [me.role, me.projectRole].some(r => t.roles.includes(r))) || me?.role === 'owner' || me?.role === 'admin');
+```
+
+### Quais papéis usar
+Use os papéis que a empresa/projeto já tem: `owner`, `admin`, `manager`, `member`, `viewer`. Se o usuário
+descrever papéis próprios ("caixa", "supervisor"), pergunte a ele e mapeie pro papel mais próximo — não
+invente um esquema de permissão paralelo. Pergunte SEMPRE, em português, **quem deve ver/poder cada tela
+e cada rota** antes de assumir que é tudo liberado.
