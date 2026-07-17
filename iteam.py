@@ -27,6 +27,36 @@ RBAC (opt-in, só pra service/app protegido) — quem está logado e o que pode:
 """
 import os, json, urllib.request
 
+# Versão deste SDK (YYYY.MM.DD, comparável lexicograficamente). check_update() compara com o servidor.
+SDK_VERSION = "2026.07.17"
+
+def version():
+    """Versão do SDK LOCAL (a que você tem clonada)."""
+    return SDK_VERSION
+
+def check_update():
+    """Avisa se o seu SDK local está ATRÁS do publicado. RODE ANTES DE CODAR (na IDE):
+        python -c "import iteam; iteam.check_update()"
+    Se disser DESATUALIZADO, dê `git pull` no iteam-codes-sdk e releia o AGENTS.md.
+    Imprime o aviso e retorna {"local","latest","upToDate","message"}."""
+    api = os.environ.get("ITEAM_API_URL")
+    if not api:
+        msg = "check_update: defina ITEAM_API_URL (ex.: https://api.iteam.works) para comparar."
+        print(msg); return {"local": SDK_VERSION, "latest": None, "upToDate": None, "message": msg}
+    try:
+        with urllib.request.urlopen(api.rstrip("/") + "/api/project/codes/sdk-version", timeout=10) as r:
+            info = json.loads(r.read().decode())
+        latest = str(info.get("version") or "")
+        up = (not latest) or (SDK_VERSION >= latest)
+        msg = (f"SDK atualizado ✓ (local {SDK_VERSION})" if up else
+               f"⚠ SDK DESATUALIZADO: local {SDK_VERSION} < publicado {latest}. "
+               f"Dê `git pull` em {info.get('repo', 'iteam-codes-sdk')} e releia o AGENTS.md antes de codar.")
+        print(msg)
+        return {"local": SDK_VERSION, "latest": latest or None, "upToDate": up, "message": msg}
+    except Exception as e:
+        msg = f"check_update: não consegui checar ({e}). Na dúvida, dê `git pull` no SDK."
+        print(msg); return {"local": SDK_VERSION, "latest": None, "upToDate": None, "message": msg}
+
 def _endpoint():
     call_tok = os.environ.get("ITEAM_CALL_TOKEN")
     internal = os.environ.get("ITEAM_INTERNAL_URL")

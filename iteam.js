@@ -16,6 +16,38 @@ const http = require('http');
 const https = require('https');
 const { URL } = require('url');
 
+// Versão deste SDK (YYYY.MM.DD, comparável lexicograficamente). check_update() compara com o servidor.
+const SDK_VERSION = '2026.07.17';
+function version() { return SDK_VERSION; }
+
+/** Avisa se o SDK local está ATRÁS do publicado. RODE ANTES DE CODAR (na IDE):
+ *    node -e "require('./iteam').check_update()"
+ * Se disser DESATUALIZADO, dê `git pull` no iteam-codes-sdk e releia o AGENTS.md. */
+function check_update() {
+  const api = process.env.ITEAM_API_URL;
+  if (!api) {
+    const msg = 'check_update: defina ITEAM_API_URL (ex.: https://api.iteam.works) para comparar.';
+    console.log(msg); return Promise.resolve({ local: SDK_VERSION, latest: null, upToDate: null, message: msg });
+  }
+  const u = new URL(api.replace(/\/$/, '') + '/api/project/codes/sdk-version');
+  const lib = u.protocol === 'https:' ? https : http;
+  return new Promise((resolve) => {
+    const req = lib.get(u, (r) => {
+      let c = ''; r.on('data', d => c += d); r.on('end', () => {
+        try {
+          const info = JSON.parse(c); const latest = String(info.version || '');
+          const up = !latest || SDK_VERSION >= latest;
+          const msg = up ? `SDK atualizado ✓ (local ${SDK_VERSION})`
+            : `⚠ SDK DESATUALIZADO: local ${SDK_VERSION} < publicado ${latest}. Dê \`git pull\` em ${info.repo || 'iteam-codes-sdk'} e releia o AGENTS.md antes de codar.`;
+          console.log(msg);
+          resolve({ local: SDK_VERSION, latest: latest || null, upToDate: up, message: msg });
+        } catch (e) { const m = 'check_update: resposta inválida. Na dúvida, dê git pull no SDK.'; console.log(m); resolve({ local: SDK_VERSION, latest: null, upToDate: null, message: m }); }
+      });
+    });
+    req.on('error', (e) => { const m = `check_update: não consegui checar (${e.message}). Na dúvida, dê git pull no SDK.`; console.log(m); resolve({ local: SDK_VERSION, latest: null, upToDate: null, message: m }); });
+  });
+}
+
 function _endpoint() {
   const callTok = process.env.ITEAM_CALL_TOKEN;
   const internal = process.env.ITEAM_INTERNAL_URL;
@@ -166,4 +198,5 @@ function menu(items, who) {
 module.exports = {
   iteam_call, iteam_query, kv, datastore, db, resources, agent_tools, get_input, result,
   user, can, require_role, requireRole, menu,
+  SDK_VERSION, version, check_update,
 };

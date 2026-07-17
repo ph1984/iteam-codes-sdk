@@ -42,10 +42,15 @@ O agente do projeto pode até abrir o artefato.
 > # ou, se ainda não tem:
 > git clone https://github.com/ph1984/iteam-codes-sdk
 > ```
-> Depois do `pull`, **releia este AGENTS.md** (ele também é atualizado) e confira o `iteam.py`/`iteam.js`.
+> Depois do `pull`, **releia este AGENTS.md** (ele também é atualizado) e **confirme que está na versão certa**:
+> ```bash
+> python -c "import iteam; iteam.check_update()"     # ou: node -e "require('./iteam').check_update()"
+> # precisa de ITEAM_API_URL no ambiente; diz "SDK atualizado ✓" ou "⚠ DESATUALIZADO → git pull"
+> ```
 > O SDK é mantido **retrocompatível** — as mudanças são **aditivas/opt-in**, então Codes existentes seguem
 > funcionando e atualizar é seguro; qualquer quebra intencional vem anotada aqui em destaque. Na dúvida,
-> atualize: o custo é zero e evita usar uma API que já mudou.
+> atualize: o custo é zero e evita usar uma API que já mudou. (A resposta do deploy também traz `sdk.latest`
+> — se o número for maior que o seu `iteam.version()`, dê `git pull`.)
 
 1. Pergunte ao usuário o **ID do projeto** e o **token do projeto** (`pct_...`, aba Codes). Coloque o token no `.env` (`ITEAM_PROJECT_TOKEN`), NUNCA no git.
 2. Descubra onde você está e o que já existe:
