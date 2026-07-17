@@ -37,11 +37,11 @@ function check_update() {
         try {
           const info = JSON.parse(c); const latest = String(info.version || '');
           const up = !latest || SDK_VERSION >= latest;
-          const msg = up ? `SDK atualizado ✓ (local ${SDK_VERSION})`
-            : `⚠ SDK DESATUALIZADO: local ${SDK_VERSION} < publicado ${latest}. Dê \`git pull\` em ${info.repo || 'iteam-codes-sdk'} e releia o AGENTS.md antes de codar.`;
+          const msg = up ? `[OK] SDK atualizado (local ${SDK_VERSION})`
+            : `[!] SDK DESATUALIZADO: local ${SDK_VERSION} < publicado ${latest}. Rode \`git pull\` em ${info.repo || 'iteam-codes-sdk'} e releia o AGENTS.md antes de codar.`;
           console.log(msg);
           resolve({ local: SDK_VERSION, latest: latest || null, upToDate: up, message: msg });
-        } catch (e) { const m = 'check_update: resposta inválida. Na dúvida, dê git pull no SDK.'; console.log(m); resolve({ local: SDK_VERSION, latest: null, upToDate: null, message: m }); }
+        } catch (e) { const m = 'check_update: resposta invalida. Na duvida, de git pull no SDK.'; console.log(m); resolve({ local: SDK_VERSION, latest: null, upToDate: null, message: m }); }
       });
     });
     req.on('error', (e) => { const m = `check_update: não consegui checar (${e.message}). Na dúvida, dê git pull no SDK.`; console.log(m); resolve({ local: SDK_VERSION, latest: null, upToDate: null, message: m }); });
