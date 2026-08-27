@@ -17,7 +17,7 @@ const https = require('https');
 const { URL } = require('url');
 
 // Versão deste SDK (YYYY.MM.DD, comparável lexicograficamente). check_update() compara com o servidor.
-const SDK_VERSION = '2026.07.17';
+const SDK_VERSION = '2026.08.27';
 function version() { return SDK_VERSION; }
 
 /** Avisa se o SDK local está ATRÁS do publicado. RODE ANTES DE CODAR (na IDE):
@@ -129,8 +129,12 @@ function result(value) { console.log('__ITEAM_RESULT__' + JSON.stringify(value))
 // RBAC (opt-in) — QUEM está logado e o que PODE ver/chamar.
 //
 // Para services/apps PROTEGIDOS (public=false), o gateway do iTeam valida o login e
-// injeta 3 headers CONFIÁVEIS na requisição que chega ao seu container (o browser não
-// consegue forjá-los — quem fala com o container é só o gateway, que os sobrescreve):
+// injeta 3 headers CONFIÁVEIS na requisição que chega ao seu container. O browser não
+// consegue forjá-los por DOIS motivos que só juntos bastam: (a) o container não publica
+// porta no host — quem fala com ele é só o gateway; e (b) o gateway APAGA
+// X-Iteam-User/Role/Project-Role vindos do cliente ANTES da auth, e só então injeta os
+// valores que o backend afirmou. Em deploy PÚBLICO (public=true) não há login: os três
+// chegam VAZIOS (anônimo) — nunca leia papel de header em rota pública.
 //   X-Iteam-User          → id do usuário logado
 //   X-Iteam-Role          → papel dele NA EMPRESA  (owner/admin/manager/member/viewer)
 //   X-Iteam-Project-Role  → papel dele NESTE PROJETO (owner/admin/manager/member/viewer)

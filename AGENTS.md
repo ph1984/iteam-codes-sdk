@@ -267,8 +267,10 @@ comportamento de hoje — não quebra nada).**
 
 ### Como funciona (você não faz login, não vê senha)
 Quando alguém acessa seu deploy protegido, o **gateway do iTeam valida o login** e injeta 3 headers
-**confiáveis** na requisição que chega ao seu container (o navegador **não** consegue forjá-los — quem
-fala com o container é só o gateway, que sobrescreve esses headers):
+**confiáveis** na requisição que chega ao seu container. O navegador **não** consegue forjá-los, por
+dois motivos que só juntos bastam: o container **não publica porta no host** (quem fala com ele é só o
+gateway) e o gateway **apaga** `X-Iteam-User`/`X-Iteam-Role`/`X-Iteam-Project-Role` vindos do cliente
+**antes** de consultar a autenticação, injetando depois só o que o backend afirmou.
 
 | Header | O que é | Valores possíveis |
 |---|---|---|
@@ -294,6 +296,23 @@ const { user, can, require_role, menu } = require('./iteam');   // mesma API em 
 const me = user(req);                       // passe o `req` do Node/Express OU os headers
 if (!can(me, 'admin')) { /* ... */ }
 ```
+
+### O link do seu app NÃO dá acesso a ninguém (e nunca deve dar)
+A URL de um deploy protegido (`https://svc.iteam.works/a/<projectId>/<slug>/...`) pode ser copiada e
+colada à vontade: quem abrir sem sessão cai no login do iTeam, e quem não participa do projeto vê
+"você não tem acesso" — **o link não transfere permissão**. Isso vale porque o gateway reavalia a
+membresia no projeto **a cada requisição**, não só na entrada.
+
+Para isso continuar verdade, **nunca** monte um link colando credencial na query
+(`?__iteam_token=...`, `?jwt=...`, `?apiKey=...`). Um link com credencial vaza pelo histórico do
+navegador, pelo `Referer`, por print e por encaminhamento — e aí ele passa a valer como a conta de
+quem o gerou. Quando precisar de entrada autenticada, o iTeam emite um **ticket curto e escopado**
+(`__iteam_ticket`, 2 minutos, válido só para aquele app); o app não precisa fazer nada com ele — o
+gateway consome e troca por sessão. Se o seu app gerar links internos, use caminhos relativos.
+
+> Incidente 27/08/2026: o botão "Abrir" da plataforma colava o JWT de sessão (7 dias, toda a API) na
+> URL do iApp. Um link repassado dava a conta inteira a quem nem estava no projeto. Foi o que
+> originou o ticket e a revalidação por requisição.
 
 ### Regra de ouro (NÃO viole): esconder a tela é só UX
 Esconder um item de menu **não protege o dado**. Uma tela censurada **exige** que a rota/dados por

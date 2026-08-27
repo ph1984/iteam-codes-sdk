@@ -28,7 +28,7 @@ RBAC (opt-in, só pra service/app protegido) — quem está logado e o que pode:
 import os, json, urllib.request
 
 # Versão deste SDK (YYYY.MM.DD, comparável lexicograficamente). check_update() compara com o servidor.
-SDK_VERSION = "2026.07.17"
+SDK_VERSION = "2026.08.27"
 
 def version():
     """Versão do SDK LOCAL (a que você tem clonada)."""
@@ -143,8 +143,13 @@ def result(value):
 #
 # Para services/apps PROTEGIDOS (public=false), o gateway do iTeam valida o login
 # e injeta 3 headers CONFIÁVEIS na requisição que chega ao seu container. O browser
-# NÃO consegue forjá-los: quem fala com o container é só o gateway, que sobrescreve
-# esses headers a cada requisição.
+# NÃO consegue forjá-los, por DOIS motivos que só juntos bastam: (a) o container não
+# publica porta no host — quem fala com ele é só o gateway; e (b) o gateway APAGA
+# X-Iteam-User/Role/Project-Role que venham do cliente ANTES de consultar a auth, e
+# só então injeta os valores que o backend afirmou.
+# ATENÇÃO no deploy PÚBLICO (public=true): não há login, então os três headers chegam
+# VAZIOS — trate como anônimo. Nunca leia papel de um header em rota pública achando
+# que "veio do gateway": lá não veio de ninguém.
 #   X-Iteam-User          → id do usuário logado
 #   X-Iteam-Role          → papel dele NA EMPRESA  (owner/admin/manager/member/viewer)
 #   X-Iteam-Project-Role  → papel dele NESTE PROJETO (owner/admin/manager/member/viewer)
