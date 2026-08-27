@@ -428,7 +428,7 @@ def _perguntar(caminho, texto_marcado, interativo):
     except Exception:
         return None
 
-def code_push(payload, pasta=".", forcar=False, ao_conflitar="perguntar"):
+def code_push(payload, pasta=".", forcar=False, ao_conflitar="perguntar", permitir_remocao=False):
     """Grava o Code. Se alguém gravou desde o seu pull, o SDK NÃO sobrescreve: puxa a versão nova,
     junta as duas (merge de 3 vias) e reenvia. Só para se os dois mexeram no mesmo trecho.
 
@@ -442,6 +442,21 @@ def code_push(payload, pasta=".", forcar=False, ao_conflitar="perguntar"):
     """
     estado = _le_estado(pasta)
     corpo = dict(payload or {})
+
+    # TRAVA DA PASTA INCOMPLETA — a lista `files` SUBSTITUI a do servidor. Mandar só o arquivo que
+    # você mexeu não é "atualizar um arquivo": é dizer que o Code passou a ter só aquele. Some o
+    # resto. É o erro mais fácil de cometer aqui, e some ARQUIVO, não linha — por isso é um erro
+    # explícito, não um aviso. Para apagar de verdade, passe permitir_remocao=True.
+    base_ini = (estado.get("base") or {}).get("files") or {}
+    if corpo.get("files") is not None and base_ini and not permitir_remocao:
+        sumiriam = sorted(set(base_ini) - set(_como_dict(corpo.get("files"))))
+        if sumiriam:
+            raise RuntimeError(
+                "code_push apagaria %d arquivo(s) que existem no Code: %s. "
+                "Mande a PASTA INTEIRA (a lista `files` substitui a do servidor). "
+                "Se a remoção é intencional, chame com permitir_remocao=True."
+                % (len(sumiriam), ", ".join(sumiriam[:8])))
+
     if not forcar and estado.get("revision") is not None:
         corpo["baseRevision"] = estado["revision"]
     try:

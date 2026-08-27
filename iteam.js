@@ -417,9 +417,25 @@ function _perguntar(caminho, textoMarcado, interativo) {
  * aoConflitar: 'perguntar' (padrão) | 'meu' | 'deles' | 'abortar'.
  * forcar=true pula tudo e sobrescreve — a versão do servidor SOME.
  */
-async function code_push(payload, pasta = '.', { forcar = false, aoConflitar = 'perguntar' } = {}) {
+async function code_push(payload, pasta = '.', { forcar = false, aoConflitar = 'perguntar', permitirRemocao = false } = {}) {
   const estado = _leEstado(pasta);
   const corpo = { ...(payload || {}) };
+
+  /* TRAVA DA PASTA INCOMPLETA — a lista `files` SUBSTITUI a do servidor. Mandar só o arquivo que
+     você mexeu não é "atualizar um arquivo": é dizer que o Code passou a ter só aquele. Some o
+     resto. É o erro mais fácil de cometer aqui, e some ARQUIVO, não linha — por isso é erro
+     explícito, não aviso. Para apagar de verdade, passe permitirRemocao: true. */
+  const baseIni = (estado.base || {}).files || {};
+  if (corpo.files !== undefined && Object.keys(baseIni).length && !permitirRemocao) {
+    const enviados = _comoDict(corpo.files);
+    const sumiriam = Object.keys(baseIni).filter((k) => !(k in enviados)).sort();
+    if (sumiriam.length) {
+      throw new Error(`code_push apagaria ${sumiriam.length} arquivo(s) que existem no Code: `
+        + `${sumiriam.slice(0, 8).join(', ')}. Mande a PASTA INTEIRA (a lista \`files\` substitui a do `
+        + 'servidor). Se a remoção é intencional, chame com { permitirRemocao: true }.');
+    }
+  }
+
   if (!forcar && estado.revision !== undefined) corpo.baseRevision = estado.revision;
   try {
     const r = await _codesApi('/api/project/codes', 'POST', corpo);

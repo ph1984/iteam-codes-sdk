@@ -300,6 +300,12 @@ await code_pull('<codeId>');
 await code_push({ name: 'Minha API', slug: 'minha-api', files: [...] });
 ```
 
+**Mande sempre a PASTA INTEIRA.** A lista `files` substitui a do servidor: enviar só o arquivo que
+você mexeu não é "atualizar um arquivo", é dizer que o Code passou a ter só aquele — o resto some.
+O SDK **barra** isso: se o envio apagaria arquivos que existem no Code, ele levanta um erro dizendo
+quais. Remoção intencional é opt-in (`permitir_remocao=True` no Python, `{ permitirRemocao: true }`
+no Node).
+
 Quando sobra conflito de verdade, o texto vem com marcadores no estilo do git
 (`<<<<<<< seu` / `=======` / `>>>>>>> servidor`): decida os trechos e chame `code_push` de novo.
 Para não depender de terminal, passe `ao_conflitar="meu"`/`"deles"` (Python) ou
