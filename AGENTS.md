@@ -251,6 +251,65 @@ curl -X POST -H "Authorization: Bearer $ITEAM_PROJECT_TOKEN" $ITEAM_API_URL/api/
 curl -H "Authorization: Bearer $ITEAM_PROJECT_TOKEN" $ITEAM_API_URL/api/project/codes/<id>/deploy-status
 ```
 
+### Duas pessoas no MESMO Code — NUNCA sobrescreva o trabalho do outro
+O envio **substitui `code` e `files` inteiros**. Sem cuidado, quem salva por último apaga o outro em
+silêncio — e como a lista de arquivos é trocada, **some arquivo, não linha**. Por isso todo Code tem
+uma `revision`, que sobe a cada gravação.
+
+**O protocolo (obrigatório quando o Code já existe):**
+1. o `pull` devolve `revision` e `ultimaEdicao` (quem gravou por último, e quando);
+2. você manda essa `revision` de volta como **`baseRevision`** no POST;
+3. se alguém gravou no meio do caminho, o servidor responde **409** — e **não grava**.
+
+```bash
+# 1) pull → guarde o campo `revision`
+curl -H "Authorization: Bearer $ITEAM_PROJECT_TOKEN" $ITEAM_API_URL/api/project/codes/<id>/pull
+# 2) envie com a revisão de onde você partiu
+curl -X POST -H "Authorization: Bearer $ITEAM_PROJECT_TOKEN" -H "Content-Type: application/json" \
+  -d '{"name":"Minha API","slug":"minha-api","baseRevision":7,"files":[…]}' \
+  $ITEAM_API_URL/api/project/codes
+```
+
+O 409 vem com o necessário para decidir: `revisaoAtual`, `alteradoPor`, `alteradoEm` e
+`arquivosDivergentes` (inclusive os que **sumiriam** se você insistisse). **A saída certa é
+pull → juntar as duas versões → enviar de novo** com a `baseRevision` nova. Reenviar por cima é
+exatamente o que apaga o trabalho do outro.
+
+**Pelo SDK você não faz nada disso à mão — ele detecta e RESOLVE.** O `code_pull` guarda a
+revisão *e a base* (o conteúdo exato de onde você partiu) em `.iteam-code.json` (local; ponha no
+`.gitignore`). Se o `code_push` levar 409, o SDK puxa a versão nova e faz um **merge de 3 vias**
+— base × sua × do servidor — e reenvia sozinho:
+
+| situação | o que o SDK faz |
+|---|---|
+| só **você** mexeu no arquivo | fica o seu |
+| só **o outro** mexeu | fica o dele (você não perde o trabalho dele por não ter tocado no arquivo) |
+| os dois, em **trechos diferentes** do mesmo arquivo | junta os dois |
+| os dois no **mesmo trecho** | ninguém pode decidir por você → **pergunta** no terminal |
+| sem terminal (CI, agente) | levanta `ConflitoDeRevisao` com o texto já fundido e **marcado** |
+
+```python
+import iteam
+iteam.code_pull("<codeId>")                  # registra revisão + base
+iteam.code_push({"name": "Minha API", "slug": "minha-api", "files": [...]})
+# → "[merge] juntei suas mudancas com as de Fulano e gravei (revisao 9)."
+```
+```js
+const { code_pull, code_push, ConflitoDeRevisao } = require('./iteam');
+await code_pull('<codeId>');
+await code_push({ name: 'Minha API', slug: 'minha-api', files: [...] });
+```
+
+Quando sobra conflito de verdade, o texto vem com marcadores no estilo do git
+(`<<<<<<< seu` / `=======` / `>>>>>>> servidor`): decida os trechos e chame `code_push` de novo.
+Para não depender de terminal, passe `ao_conflitar="meu"`/`"deles"` (Python) ou
+`{ aoConflitar: 'meu' }` (Node) — vale **só para os trechos disputados**; o resto continua sendo
+juntado normalmente. `merge3(base, seu, deles)` também é exportado, se quiser fundir por conta.
+
+Enviar **sem** `baseRevision` continua funcionando (retrocompatibilidade), mas a resposta vem com um
+`aviso` — nesse modo você pode ter apagado alguém sem saber. Só use `forcar=True` quando tiver
+certeza de que a versão do servidor não interessa: ela some.
+
 ### Os AGENTES do projeto conhecem e usam as APIs/telas
 Um agente que está no projeto ganha tools nativas:
 - **`proj_list_services`** — lista os services (APIs) e apps (telas) do projeto, com título, descrição, endpoints e telas.

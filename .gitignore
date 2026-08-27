@@ -3,3 +3,6 @@
 scratch.sqlite
 __pycache__/
 node_modules/
+
+# estado local do SDK (revisao + base p/ merge) — nao versionar
+.iteam-code.json

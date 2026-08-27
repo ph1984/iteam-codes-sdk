@@ -25,10 +25,10 @@ RBAC (opt-in, só pra service/app protegido) — quem está logado e o que pode:
   deny = require_role(request.headers, "admin"); # guarda de rota → 403 pronto (ou None)
   telas = menu([{ "title": "X", "path": "/x", "roles": ["admin"] }], me)  # filtra o menu
 """
-import os, json, urllib.request
+import os, json, urllib.request, urllib.error
 
-# Versão deste SDK (YYYY.MM.DD, comparável lexicograficamente). check_update() compara com o servidor.
-SDK_VERSION = "2026.08.27"
+# Versão deste SDK (YYYY.MM.DD[.n] — o sufixo distingue duas releases no mesmo dia; comparável lexicograficamente). check_update() compara com o servidor.
+SDK_VERSION = "2026.08.27.1"
 
 def version():
     """Versão do SDK LOCAL (a que você tem clonada)."""
@@ -256,3 +256,261 @@ def menu(items, who=None):
         if not roles or can(who, *roles):
             out.append(it)
     return out
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# CONCORRÊNCIA — duas pessoas mexendo no MESMO Code ao mesmo tempo.
+#
+# O deploy SUBSTITUI `code` e `files` inteiros. Sem controle, quem salva por último apaga o outro
+# em SILÊNCIO — e como a lista de arquivos é trocada, some ARQUIVO, não linha.
+#
+# O SDK não se limita a avisar: ele **junta** as duas versões. Para isso o `code_pull` guarda a
+# BASE (o conteúdo exato de onde você partiu) em `.iteam-code.json`. No `code_push`, se o servidor
+# recusar (409), o SDK puxa a versão nova e faz um merge de 3 vias — base × sua × do servidor:
+#
+#   • arquivo que só VOCÊ mexeu      → fica o seu
+#   • arquivo que só O OUTRO mexeu   → fica o dele (você não o perde por não ter tocado nele)
+#   • os dois mexeram, em trechos diferentes do arquivo → junta os dois trechos
+#   • os dois mexeram no MESMO trecho → aí ninguém pode decidir por você: PERGUNTA (ou levanta
+#     ConflitoDeRevisao com o texto marcado, quando não há terminal)
+#
+# Depois do merge ele reenvia sozinho com a revisão nova. Nada é sobrescrito sem decisão.
+# `.iteam-code.json` é local (ponha no .gitignore) — não sobe no deploy.
+import difflib, sys
+
+_REV_FILE = ".iteam-code.json"
+
+class ConflitoDeRevisao(Exception):
+    """Sobrou conflito que o SDK não pode decidir sozinho.
+    `.detalhes` traz quem gravou e quando; `.arquivos_em_conflito` traz os caminhos;
+    `.merge` traz o conteúdo já fundido, com marcadores nos trechos disputados."""
+    def __init__(self, detalhes, arquivos_em_conflito=None, merge=None):
+        self.detalhes = detalhes or {}
+        self.arquivos_em_conflito = arquivos_em_conflito or []
+        self.merge = merge or {}
+        super().__init__(self.detalhes.get("message") or "conflito de revisão")
+
+def _codes_api(path, method="GET", body=None):
+    api = os.environ.get("ITEAM_API_URL")
+    pct = os.environ.get("ITEAM_PROJECT_TOKEN")
+    if not api or not pct:
+        raise RuntimeError("Configure ITEAM_API_URL + ITEAM_PROJECT_TOKEN (token do projeto, aba Codes).")
+    data = json.dumps(body).encode() if body is not None else None
+    req = urllib.request.Request(api.rstrip("/") + path, data=data, method=method, headers={
+        "Content-Type": "application/json", "Authorization": "Bearer " + pct})
+    try:
+        with urllib.request.urlopen(req, timeout=120) as r:
+            return json.loads(r.read().decode())
+    except urllib.error.HTTPError as e:
+        corpo = {}
+        try: corpo = json.loads(e.read().decode())
+        except Exception: pass
+        if e.code == 409:
+            raise ConflitoDeRevisao(corpo)
+        raise RuntimeError("%s %s: %s" % (e.code, path, corpo.get("message") or corpo.get("error") or e.reason))
+
+
+# ── merge de 3 vias, por linha ───────────────────────────────────────────────────────────────
+def _blocos_alterados(ops):
+    """Trechos NÃO-iguais de um diff, em coordenadas da BASE."""
+    return [(i1, i2) for tag, i1, i2, _j1, _j2 in ops if tag != "equal"]
+
+def _mapear(ops, seq, a, z):
+    """Texto do lado `seq` correspondente ao intervalo [a,z) da base.
+    Em trecho igual a correspondência é linha a linha; em trecho alterado entra o bloco inteiro
+    (por isso os blocos são fundidos antes: nunca cortamos uma alteração ao meio)."""
+    out = []
+    for tag, i1, i2, j1, j2 in ops:
+        # Inserção pura tem LARGURA ZERO na base (i1 == i2): não ocupa linha do original, só marca
+        # onde entrou. O recorte normal a descartava e as linhas inseridas sumiam do merge — em
+        # silêncio, que é o pior jeito de errar aqui. Vai por contenção de POSIÇÃO, com as bordas.
+        if i1 == i2:
+            if a <= i1 <= z:
+                out.extend(seq[j1:j2])
+            continue
+        if i2 <= a or i1 >= z:
+            continue
+        if tag == "equal":
+            ini = j1 + (max(i1, a) - i1)
+            fim = j1 + (min(i2, z) - i1)
+            out.extend(seq[ini:fim])
+        else:
+            out.extend(seq[j1:j2])
+    return out
+
+def merge3(base, meu, deles, rotulo_meu="seu", rotulo_deles="servidor"):
+    """Junta duas edições feitas sobre a mesma base. Devolve (texto, houve_conflito).
+    Trechos disputados pelos dois lados saem com marcadores no estilo do git."""
+    if meu == deles: return meu, False
+    if base == meu:  return deles, False   # você não mexeu neste arquivo
+    if base == deles: return meu, False    # o outro não mexeu neste arquivo
+
+    b = base.splitlines(True); m = meu.splitlines(True); d = deles.splitlines(True)
+    om = difflib.SequenceMatcher(None, b, m).get_opcodes()
+    od = difflib.SequenceMatcher(None, b, d).get_opcodes()
+
+    # Blocos que se sobrepõem viram UM bloco: senão um lado teria a alteração partida ao meio.
+    brutos = sorted(_blocos_alterados(om) + _blocos_alterados(od))
+    blocos = []
+    for i1, i2 in brutos:
+        if blocos and i1 <= blocos[-1][1]:
+            blocos[-1][1] = max(blocos[-1][1], i2)
+        else:
+            blocos.append([i1, i2])
+
+    saida = []; conflito = False; pos = 0
+    for i1, i2 in blocos:
+        saida.extend(b[pos:i1])                 # trecho intocado pelos dois
+        tm = _mapear(om, m, i1, i2)
+        td = _mapear(od, d, i1, i2)
+        orig = b[i1:i2]
+        if tm == td:      saida.extend(tm)      # os dois chegaram no mesmo texto
+        elif tm == orig:  saida.extend(td)      # só o outro mexeu aqui
+        elif td == orig:  saida.extend(tm)      # só você mexeu aqui
+        else:
+            conflito = True
+            saida.append("<<<<<<< %s\n" % rotulo_meu)
+            saida.extend(tm)
+            saida.append("=======\n")
+            saida.extend(td)
+            saida.append(">>>>>>> %s\n" % rotulo_deles)
+        pos = i2
+    saida.extend(b[pos:])
+    return "".join(saida), conflito
+
+
+# ── estado local (base + revisão) ────────────────────────────────────────────────────────────
+def _rev_path(pasta="."): return os.path.join(pasta, _REV_FILE)
+
+def _le_estado(pasta="."):
+    try:
+        with open(_rev_path(pasta), "r", encoding="utf-8") as f: return json.load(f)
+    except Exception:
+        return {}
+
+def code_revision(pasta="."):
+    """Revisão registrada no último pull/push desta pasta (None se nunca puxou)."""
+    return _le_estado(pasta).get("revision")
+
+def _grava_estado(pasta, d):
+    """Guarda revisão + BASE (conteúdo de onde você partiu). Sem a base não há merge possível —
+    dá para saber QUE mudou, nunca O QUE cada lado mudou."""
+    try:
+        with open(_rev_path(pasta), "w", encoding="utf-8") as f:
+            json.dump({
+                "codeId": d.get("codeId"), "slug": d.get("slug"), "revision": d.get("revision"),
+                "base": {"code": d.get("code") or "",
+                         "files": {f_["path"]: f_.get("content", "") for f_ in (d.get("files") or []) if f_.get("path")}},
+            }, f, indent=1)
+    except Exception:
+        pass  # sem permissão de escrita: o push ainda funciona, só sem merge automático
+
+def code_pull(code_id, pasta="."):
+    """Baixa o Code e registra revisão + base para o próximo push. Devolve o dict do pull."""
+    d = _codes_api("/api/project/codes/%s/pull" % code_id)
+    _grava_estado(pasta, d)
+    return d
+
+
+# ── push com detecção e resolução ────────────────────────────────────────────────────────────
+def _como_dict(files): return {f["path"]: f.get("content", "") for f in (files or []) if f.get("path")}
+def _como_lista(dic):  return [{"path": k, "content": v} for k, v in sorted(dic.items())]
+
+def _perguntar(caminho, texto_marcado, interativo):
+    """Só pergunta o que ninguém pode decidir por você: os dois mexeram no MESMO trecho."""
+    if not interativo:
+        return None
+    _safe_print("\n[!] Conflito em %s — voces dois mexeram no mesmo trecho:\n" % caminho)
+    _safe_print(texto_marcado[:2000])
+    _safe_print("\n  [s] fica o SEU   [o] fica o do OUTRO   [m] gravar com os marcadores e revisar")
+    try:
+        return (input("  escolha [s/o/m]: ") or "").strip().lower()[:1]
+    except Exception:
+        return None
+
+def code_push(payload, pasta=".", forcar=False, ao_conflitar="perguntar"):
+    """Grava o Code. Se alguém gravou desde o seu pull, o SDK NÃO sobrescreve: puxa a versão nova,
+    junta as duas (merge de 3 vias) e reenvia. Só para se os dois mexeram no mesmo trecho.
+
+    ao_conflitar: "perguntar" (pergunta no terminal; sem terminal, levanta),
+                  "meu" / "deles" (decide sempre para um lado no trecho disputado),
+                  "abortar" (levanta ConflitoDeRevisao com o texto já fundido e marcado).
+    forcar=True pula tudo e sobrescreve — a versão do servidor SOME. Use só com certeza.
+
+        iteam.code_pull("<codeId>")
+        iteam.code_push({"name": "Minha API", "slug": "minha-api", "files": [...]})
+    """
+    estado = _le_estado(pasta)
+    corpo = dict(payload or {})
+    if not forcar and estado.get("revision") is not None:
+        corpo["baseRevision"] = estado["revision"]
+    try:
+        r = _codes_api("/api/project/codes", method="POST", body=corpo)
+        _grava_estado(pasta, {"codeId": r.get("codeId"), "slug": r.get("slug"), "revision": r.get("revision"),
+                              "code": corpo.get("code"), "files": corpo.get("files")})
+        return r
+    except ConflitoDeRevisao as c:
+        base = estado.get("base") or {}
+        if not base:
+            # Nunca houve pull nesta pasta: sem base não dá para saber o que CADA lado mudou.
+            c.detalhes.setdefault("dica", "Rode code_pull() antes de editar — sem a base o SDK nao pode fundir.")
+            raise
+
+        code_id = c.detalhes.get("codeId") or estado.get("codeId") or corpo.get("codeId")
+        if not code_id:
+            raise
+        atual = _codes_api("/api/project/codes/%s/pull" % code_id)
+
+        meus = _como_dict(corpo.get("files"))
+        deles = _como_dict(atual.get("files"))
+        base_files = base.get("files") or {}
+        interativo = (ao_conflitar == "perguntar") and sys.stdin is not None and sys.stdin.isatty()
+
+        juntos = {}; em_conflito = []
+        for caminho in sorted(set(meus) | set(deles) | set(base_files)):
+            b = base_files.get(caminho); mm = meus.get(caminho); dd = deles.get(caminho)
+            # apagado por um lado e intocado pelo outro: respeita quem apagou
+            if mm is None and dd is not None:
+                if b is not None and dd == b: continue          # você apagou, ele não mexeu
+                if b is None: juntos[caminho] = dd; continue    # arquivo novo dele
+            if dd is None and mm is not None:
+                if b is not None and mm == b: continue          # ele apagou, você não mexeu
+                juntos[caminho] = mm; continue                  # arquivo novo seu (ou você editou)
+            if mm is None and dd is None: continue
+            texto, houve = merge3(b if b is not None else "", mm, dd)
+            if houve:
+                escolha = _perguntar(caminho, texto, interativo) if ao_conflitar == "perguntar" else \
+                          ("s" if ao_conflitar == "meu" else "o" if ao_conflitar == "deles" else None)
+                if escolha == "s":   texto = mm
+                elif escolha == "o": texto = dd
+                else:                em_conflito.append(caminho)
+            juntos[caminho] = texto
+
+        codigo, houve_code = merge3(base.get("code") or "", corpo.get("code") or atual.get("code") or "",
+                                    atual.get("code") or "")
+        if houve_code:
+            escolha = _perguntar("(arquivo de entrada)", codigo, interativo) if ao_conflitar == "perguntar" else \
+                      ("s" if ao_conflitar == "meu" else "o" if ao_conflitar == "deles" else None)
+            if escolha == "s":   codigo = corpo.get("code") or ""
+            elif escolha == "o": codigo = atual.get("code") or ""
+            else:                em_conflito.append("(arquivo de entrada)")
+
+        if em_conflito:
+            merge_parcial = dict(juntos); merge_parcial["(arquivo de entrada)"] = codigo
+            c.detalhes["message"] = (
+                "Voces dois mexeram no MESMO trecho de: %s. O resto ja foi juntado automaticamente. "
+                "Abra o texto marcado (<<<<<<< seu / >>>>>>> servidor), decida os trechos e chame "
+                "code_push de novo." % ", ".join(em_conflito))
+            raise ConflitoDeRevisao(c.detalhes, em_conflito, merge_parcial)
+
+        # Tudo resolvido: reenvia sobre a revisão nova.
+        corpo["files"] = _como_lista(juntos)
+        if corpo.get("code") is not None or codigo: corpo["code"] = codigo
+        corpo["baseRevision"] = atual.get("revision")
+        r = _codes_api("/api/project/codes", method="POST", body=corpo)
+        r["merge"] = {"juntado_com": c.detalhes.get("alteradoPor"), "arquivos": sorted(juntos.keys())}
+        _grava_estado(pasta, {"codeId": r.get("codeId"), "slug": r.get("slug"), "revision": r.get("revision"),
+                              "code": corpo.get("code"), "files": corpo.get("files")})
+        _safe_print("[merge] juntei suas mudancas com as de %s e gravei (revisao %s)."
+                    % (c.detalhes.get("alteradoPor") or "outra pessoa", r.get("revision")))
+        return r
