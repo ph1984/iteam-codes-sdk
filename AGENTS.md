@@ -52,6 +52,26 @@ O agente do projeto pode até abrir o artefato.
 > atualize: o custo é zero e evita usar uma API que já mudou. (A resposta do deploy também traz `sdk.latest`
 > — se o número for maior que o seu `iteam.version()`, dê `git pull`.)
 
+> **0.1. AMBIENTE COM REDE FECHADA (sandbox na nuvem).** Se você roda num ambiente de agente na
+> nuvem (Claude Code na web, Codespaces e afins), a saída de rede costuma vir com uma *allowlist*:
+> só GitHub, npm, PyPI e pouco mais. O clone deste repo funciona e a **primeira chamada à API
+> falha** com algo como:
+> ```
+> Host not in allowlist: api.iteam.works. Add this host to your network egress settings.
+> ```
+> Isso **não é** token errado, projeto errado nem SDK desatualizado — a requisição nem chegou ao
+> iTeam. Só um administrador daquele ambiente resolve, liberando os domínios:
+>
+> | domínio | para quê |
+> |---|---|
+> | `api.iteam.works` | a API dos Codes (use `stg.api.iteam.works` se for homologação) |
+> | `svc.iteam.works` | só se você for abrir/testar um `service`/`app` já no ar |
+> | `github.com` | clonar e atualizar este SDK (quase sempre já liberado) |
+>
+> Enquanto não liberarem, **dá para trabalhar**: escreva o código do job/service/app normalmente e
+> deixe o deploy para quando a rede abrir. O que NÃO dá é adivinhar o que já existe no projeto —
+> peça ao usuário os slugs da aba Codes e trate como um `pull` manual.
+
 1. Pergunte ao usuário o **ID do projeto** e o **token do projeto** (`pct_...`, aba Codes). Coloque o token no `.env` (`ITEAM_PROJECT_TOKEN`), NUNCA no git.
 2. Descubra onde você está e o que já existe:
    ```bash

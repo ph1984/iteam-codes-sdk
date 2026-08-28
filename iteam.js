@@ -17,7 +17,7 @@ const https = require('https');
 const { URL } = require('url');
 
 // Versão deste SDK (YYYY.MM.DD[.n] — o sufixo distingue duas releases no mesmo dia; comparável lexicograficamente). check_update() compara com o servidor.
-const SDK_VERSION = '2026.08.27.1';
+const SDK_VERSION = '2026.08.28';
 function version() { return SDK_VERSION; }
 
 /** Avisa se o SDK local está ATRÁS do publicado. RODE ANTES DE CODAR (na IDE):
@@ -44,7 +44,13 @@ function check_update() {
         } catch (e) { const m = 'check_update: resposta invalida. Na duvida, de git pull no SDK.'; console.log(m); resolve({ local: SDK_VERSION, latest: null, upToDate: null, message: m }); }
       });
     });
-    req.on('error', (e) => { const m = `check_update: não consegui checar (${e.message}). Na dúvida, dê git pull no SDK.`; console.log(m); resolve({ local: SDK_VERSION, latest: null, upToDate: null, message: m }); });
+    req.on('error', (e) => {
+      const m = _redeBloqueada(e && (e.code || e.message))
+        ? AJUDA_REDE
+        : `check_update: não consegui checar (${e.message}). Na dúvida, dê git pull no SDK.`;
+      console.log(m);
+      resolve({ local: SDK_VERSION, latest: null, upToDate: null, message: m });
+    });
   });
 }
 
@@ -228,6 +234,20 @@ class ConflitoDeRevisao extends Error {
   }
 }
 
+/** Sandbox na nuvem cortou a saida? A mensagem do proxy e reconhecivel e o remedio nao e obvio
+ *  para quem so ve "falhou" — sem isto, o agente fica tentando token e projeto, que estao certos. */
+function _redeBloqueada(msg) {
+  const t = String(msg || '').toLowerCase();
+  return t.includes('not in allowlist') || t.includes('egress')
+    || (t.includes('proxy') && t.includes('block'))
+    || t.includes('enotfound') || t.includes('getaddrinfo') || t.includes('eai_again');
+}
+
+const AJUDA_REDE = 'A rede deste ambiente bloqueou a saida para o iTeam (allowlist de egress) — nao e '
+  + 'token nem projeto errado: a requisicao nem chegou la. Peca a um admin do ambiente para liberar '
+  + "'api.iteam.works' (ou 'stg.api.iteam.works' em homologacao). Enquanto isso da para escrever o "
+  + 'codigo normalmente e deixar o deploy para depois.';
+
 function _codesApi(rota, method = 'GET', body) {
   const api = process.env.ITEAM_API_URL;
   const pct = process.env.ITEAM_PROJECT_TOKEN;
@@ -248,11 +268,15 @@ function _codesApi(rota, method = 'GET', body) {
       r.on('end', () => {
         let j; try { j = JSON.parse(c); } catch { j = {}; }
         if (r.statusCode === 409) return reject(new ConflitoDeRevisao(j));
-        if (r.statusCode >= 400) return reject(new Error(`${r.statusCode} ${rota}: ${j.message || j.error || c.slice(0, 200)}`));
+        const detalhe = j.message || j.error || c.slice(0, 200);
+        if (r.statusCode >= 400) {
+          return reject(new Error(_redeBloqueada(detalhe) ? AJUDA_REDE : `${r.statusCode} ${rota}: ${detalhe}`));
+        }
         resolve(j);
       });
     });
-    req.on('error', reject);
+    // Nem chegou a haver resposta HTTP: DNS/proxy barrou antes.
+    req.on('error', (e) => reject(_redeBloqueada(e && (e.code || e.message)) ? new Error(AJUDA_REDE) : e));
     if (payload) req.write(payload);
     req.end();
   });

@@ -28,7 +28,7 @@ RBAC (opt-in, só pra service/app protegido) — quem está logado e o que pode:
 import os, json, urllib.request, urllib.error
 
 # Versão deste SDK (YYYY.MM.DD[.n] — o sufixo distingue duas releases no mesmo dia; comparável lexicograficamente). check_update() compara com o servidor.
-SDK_VERSION = "2026.08.27.1"
+SDK_VERSION = "2026.08.28"
 
 def version():
     """Versão do SDK LOCAL (a que você tem clonada)."""
@@ -65,7 +65,8 @@ def check_update():
             result = {"local": SDK_VERSION, "latest": latest or None, "upToDate": up, "message": msg}
         except Exception as e:
             result = {"local": SDK_VERSION, "latest": None, "upToDate": None,
-                      "message": "check_update: nao consegui checar (%s). Na duvida, de `git pull` no SDK." % e}
+                      "message": (_AJUDA_REDE if _rede_bloqueada(e)
+                                  else "check_update: nao consegui checar (%s). Na duvida, de `git pull` no SDK." % e)}
     _safe_print(result["message"])
     return result
 
@@ -290,6 +291,21 @@ class ConflitoDeRevisao(Exception):
         self.merge = merge or {}
         super().__init__(self.detalhes.get("message") or "conflito de revisão")
 
+def _rede_bloqueada(msg):
+    """Sandbox na nuvem cortou a saída? A mensagem do proxy é reconhecível e o remédio não é óbvio
+    para quem só vê 'falhou' — sem isto, o agente fica tentando token e projeto, que estão certos."""
+    t = str(msg or "").lower()
+    return ("not in allowlist" in t or "egress" in t
+            or ("proxy" in t and "block" in t)
+            or "name or service not known" in t or "getaddrinfo" in t)
+
+_AJUDA_REDE = (
+    "A rede deste ambiente bloqueou a saida para o iTeam (allowlist de egress) — nao e token nem "
+    "projeto errado: a requisicao nem chegou la. Peca a um admin do ambiente para liberar "
+    "'api.iteam.works' (ou 'stg.api.iteam.works' em homologacao). Enquanto isso da para escrever o "
+    "codigo normalmente e deixar o deploy para depois."
+)
+
 def _codes_api(path, method="GET", body=None):
     api = os.environ.get("ITEAM_API_URL")
     pct = os.environ.get("ITEAM_PROJECT_TOKEN")
@@ -307,7 +323,15 @@ def _codes_api(path, method="GET", body=None):
         except Exception: pass
         if e.code == 409:
             raise ConflitoDeRevisao(corpo)
-        raise RuntimeError("%s %s: %s" % (e.code, path, corpo.get("message") or corpo.get("error") or e.reason))
+        detalhe = corpo.get("message") or corpo.get("error") or e.reason
+        if _rede_bloqueada(detalhe):
+            raise RuntimeError(_AJUDA_REDE)
+        raise RuntimeError("%s %s: %s" % (e.code, path, detalhe))
+    except urllib.error.URLError as e:
+        # Nem chegou a haver resposta HTTP: DNS/proxy barrou antes.
+        if _rede_bloqueada(getattr(e, "reason", "")):
+            raise RuntimeError(_AJUDA_REDE)
+        raise
 
 
 # ── merge de 3 vias, por linha ───────────────────────────────────────────────────────────────
