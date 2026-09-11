@@ -232,6 +232,17 @@ python main.py                                    # o SDK usa o token do projeto
 ```
 O mesmo `main.py` roda idêntico no deploy (o iTeam injeta o acesso no sandbox). Você nunca manuseia segredo.
 
+Vale para tudo: `kv`, `db`, `datastore`, `agent_tools`, `files`, `code_pull`/`code_push`. O SDK
+detecta em qual dos dois mundos está e escolhe a ponte sozinho.
+
+**Uma exceção que morde:** `files` precisa saber de QUAL Code são os arquivos. No deploy isso vem
+pronto; na sua máquina, sai do `.iteam-code.json` — então **faça `code_pull` antes** (ou defina
+`ITEAM_CODE_SLUG` no `.env` com o mesmo slug). Sem isso o SDK **erra na hora**, de propósito: é
+melhor que gravar numa pasta diferente da do deploy sem ninguém perceber.
+
+> Rodando local você escreve nos recursos **de verdade** (mesmo KV, mesmo banco, mesmo bucket do
+> projeto). Não é uma caixa de areia — apague o que criar em teste.
+
 ## Recursos dos AGENTES do projeto (MCP, HTTP tools, learned APIs, datasources)
 Se há agentes no projeto, as tools deles viram catálogo:
 ```python

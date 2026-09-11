@@ -543,7 +543,19 @@ async function context() { return _codesApi('/api/project/codes/context'); }
  *    await files.upload('grafico.png', bufferPng);   // Buffer vai como binario
  */
 const files = {
-  _slug: () => process.env.ITEAM_CODE_SLUG || '',
+  /** Qual Code sou eu — no deploy vem do ambiente; na IDE, do .iteam-code.json (code_pull).
+   *  Sem a segunda via, o teste local gravaria numa pasta diferente da do deploy em silencio. */
+  _slug: () => {
+    const env = (process.env.ITEAM_CODE_SLUG || '').trim();
+    if (env) return env;
+    try {
+      const slug = JSON.parse(require('fs').readFileSync(REV_FILE, 'utf8')).slug;
+      if (slug) return slug;
+    } catch (e) { /* sem estado local */ }
+    throw new Error('files: nao sei de qual Code sao estes arquivos. Rodando local, faca `code_pull` '
+      + 'primeiro (ele grava o slug em .iteam-code.json) ou defina ITEAM_CODE_SLUG no .env com o '
+      + 'mesmo slug do Code. No deploy isso vem sozinho.');
+  },
   upload: (caminho, conteudo, tipo) => {
     const args = { caminho, __slug: files._slug() };
     if (tipo) args.tipo = tipo;

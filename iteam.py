@@ -145,7 +145,26 @@ class _Files:
     """
 
     def _slug(self):
-        return os.environ.get("ITEAM_CODE_SLUG", "")
+        """Qual Code sou eu — no deploy vem do ambiente; na IDE, do .iteam-code.json.
+
+        Sem essa segunda via, testar local gravaria numa pasta diferente da do deploy e ninguem
+        perceberia: mesmo codigo, arquivos em dois lugares. Se nao der para saber, ERRA na hora.
+        """
+        env = os.environ.get("ITEAM_CODE_SLUG", "").strip()
+        if env:
+            return env
+        try:
+            with open(_REV_FILE, encoding="utf-8") as f:
+                slug = (json.load(f) or {}).get("slug") or ""
+            if slug:
+                return slug
+        except Exception:
+            pass
+        raise RuntimeError(
+            "files: nao sei de qual Code sao estes arquivos. Rodando local, faca `code_pull` "
+            "primeiro (ele grava o slug em .iteam-code.json) ou defina ITEAM_CODE_SLUG no .env "
+            "com o mesmo slug do Code. No deploy isso vem sozinho."
+        )
 
     def upload(self, caminho, conteudo, tipo=None):
         """Grava um arquivo. `conteudo` pode ser str (texto) ou bytes (binario)."""
