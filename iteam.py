@@ -28,7 +28,7 @@ RBAC (opt-in, só pra service/app protegido) — quem está logado e o que pode:
 import os, json, urllib.request, urllib.error
 
 # Versão deste SDK (YYYY.MM.DD[.n] — o sufixo distingue duas releases no mesmo dia; comparável lexicograficamente). check_update() compara com o servidor.
-SDK_VERSION = "2026.08.28"
+SDK_VERSION = "2026.09.11"
 
 def version():
     """Versão do SDK LOCAL (a que você tem clonada)."""
@@ -428,6 +428,19 @@ def _grava_estado(pasta, d):
             }, f, indent=1)
     except Exception:
         pass  # sem permissão de escrita: o push ainda funciona, só sem merge automático
+
+def context():
+    """Quem e o DONO deste Code — projeto ou agente.
+
+    Um Code de agente roda exatamente igual a um Code de projeto (mesmo token, mesmas rotas,
+    mesmos recursos): o `projectId` da URL e o do projeto-casa do agente, e e opaco. Este
+    helper existe para quando o Code precisa SABER que o dono e um agente — por exemplo para
+    usar `agent_tools()` (que ja resolve para o agente-dono) ou para rotular a tela.
+
+    Devolve: {"projectId", "tokenPrefix", "ownerType": "agent"|"project", "agentId"?, "ownerName"}
+    """
+    return _codes_api("/api/project/codes/context")
+
 
 def code_pull(code_id, pasta="."):
     """Baixa o Code e registra revisão + base para o próximo push. Devolve o dict do pull."""

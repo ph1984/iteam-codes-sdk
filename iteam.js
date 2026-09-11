@@ -17,7 +17,7 @@ const https = require('https');
 const { URL } = require('url');
 
 // Versão deste SDK (YYYY.MM.DD[.n] — o sufixo distingue duas releases no mesmo dia; comparável lexicograficamente). check_update() compara com o servidor.
-const SDK_VERSION = '2026.08.28';
+const SDK_VERSION = '2026.09.11';
 function version() { return SDK_VERSION; }
 
 /** Avisa se o SDK local está ATRÁS do publicado. RODE ANTES DE CODAR (na IDE):
@@ -525,9 +525,16 @@ async function code_push(payload, pasta = '.', { forcar = false, aoConflitar = '
   }
 }
 
+/** Quem e o DONO deste Code — projeto ou agente.
+ *  Um Code de agente roda igual a um de projeto (mesmo token, mesmas rotas, mesmos recursos):
+ *  o `projectId` da URL e o do projeto-casa do agente, e e opaco. Serve para o Code SABER que o
+ *  dono e um agente — `agent_tools()` ja resolve para o agente-dono.
+ *  -> { projectId, tokenPrefix, ownerType: 'agent'|'project', agentId?, ownerName } */
+async function context() { return _codesApi('/api/project/codes/context'); }
+
 module.exports = {
   iteam_call, iteam_query, kv, datastore, db, resources, agent_tools, get_input, result,
   user, can, require_role, requireRole, menu,
-  code_pull, code_push, code_revision, merge3, ConflitoDeRevisao,
+  code_pull, code_push, code_revision, merge3, ConflitoDeRevisao, context,
   SDK_VERSION, version, check_update,
 };

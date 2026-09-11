@@ -243,6 +243,38 @@ res  = iteam_call("alguma_tool", **args)           # HTTP tool / learned API / M
 ```
 O backend acha QUAL agente do projeto tem a tool e executa com a credencial dele (cofre) — o segredo nunca chega ao seu código. Tirou o agente do projeto → a tool some do catálogo e para de funcionar.
 
+## Codes de AGENTE (a aba "Codes" dentro de um agente)
+
+Um Code pode pertencer a um **agente** em vez de um projeto. Não muda **nada** no seu fluxo: mesmo
+token (`pct_`, na aba Codes do agente), mesmas rotas, mesmo `code_push`/`deploy`, mesmos recursos
+isolados. O `projectId` que aparece na URL da farm (`/<a|s>/<projectId>/<slug>`) é o do
+**projeto-casa** do agente — opaco, não invente nada com ele.
+
+O que muda é quem consome:
+
+```python
+from iteam import context, agent_tools
+c = context()
+# {"projectId": "...", "ownerType": "agent", "agentId": "...", "ownerName": "Agente X · Codes"}
+if c["ownerType"] == "agent":
+    tools = agent_tools()   # já resolve para o agente-DONO
+```
+
+E o dono ganha **maestria** sobre o que você publicar, sem você fazer nada além do de sempre:
+
+- **`kind: 'service'`** — ao subir no ar, cada endpoint vira **uma ferramenta tipada** do agente
+  (via API Aprendida), com schema, armadilhas e exemplos. Para isso valer: exponha
+  **`/openapi.json`** (FastAPI/Nest já expõem) ou declare `endpoints[]` com `summary` e
+  `inputSchema` no manifesto. Endpoint sem descrição vira ferramenta que ninguém sabe usar.
+- **`kind: 'job'`** — publicado (`published: true`) com `inputSchema`, vira a ferramenta
+  `code_<slug>`. Job **sem `schedule`** é exatamente o "script sob demanda".
+- **`kind: 'app'`** — cada tela vira `abrir_<slug>`, e o agente abre a tela certa **ao lado do
+  chat**, já filtrada pelos `params`. Dê `title` decente a cada tela em `screens[]`.
+
+O agente **não** recebe seu código no contexto — só uma linha por Code (`slug · tipo · propósito`)
+e o índice das ferramentas. Por isso `description`, `summary` e `title` são o que ele lê para
+decidir: escreva-os para humano, não para você mesmo.
+
 ## Tipos de Code: job · service · app (service_farm)
 Todo Code tem **`kind`** (default `job`) + **título** (`name`) + **descrição**:
 - **`job`** — roda e termina (o clássico; efêmero no Daytona). Usa `get_input()`/`result()`.
