@@ -243,6 +243,46 @@ res  = iteam_call("alguma_tool", **args)           # HTTP tool / learned API / M
 ```
 O backend acha QUAL agente do projeto tem a tool e executa com a credencial dele (cofre) — o segredo nunca chega ao seu código. Tirou o agente do projeto → a tool some do catálogo e para de funcionar.
 
+## Arquivos do Code (S3) — `files`
+
+Todo Code tem uma **pasta própria** no S3. Você manda caminho relativo; o servidor monta a chave
+real a partir do seu token. Por isso **não existe credencial, bucket nem endpoint no seu código** —
+não há o que vazar, e Code de outro projeto não alcança os seus arquivos.
+
+```python
+from iteam import files
+
+r = files.upload("relatorios/fechamento.csv", csv_texto)
+print(r["url"])                       # link publico e permanente, pronto para mandar
+
+files.upload("graficos/curva.png", png_bytes)   # bytes viram binario, voce nao codifica nada
+files.list("relatorios/")             # [{caminho, tamanho, modificadoEm, url}]
+files.delete("relatorios/antigo.csv")
+```
+
+```js
+const { files } = require('./iteam');
+const r = await files.upload('relatorios/fechamento.csv', csvTexto);
+await files.upload('graficos/curva.png', bufferPng);
+```
+
+**O que a fronteira garante, e o que não garante.** A pasta vem do `companyId`/`projectId` do
+**token**: um Code de outro projeto (ou de outro agente) não lê, não lista e não apaga o que é seu.
+Dentro do **mesmo** projeto, o `slug` separa os Codes em pastas — organização, não segurança:
+Codes do mesmo projeto já compartilham token, KV e banco por desenho.
+
+**O link é público.** Quem tem a URL, vê o arquivo (a listagem, não). Serve para relatório, export,
+imagem de dashboard, anexo de e-mail. **Não guarde ali o que não pode circular.**
+
+Regras que o servidor aplica e recusa em vez de "consertar em silêncio": caminho relativo (sem `/`
+no começo), sem `..`, sem `\`, até 400 caracteres, e **50 MB por arquivo**. Arquivo maior: fatie.
+
+## Recursos de dados: já vêm ligados
+
+Não existe mais "ativar antes de usar". O **primeiro** `db.query()` / `datastore.query()` provisiona
+o Postgres ou o Data Store do projeto (ou do agente) e já responde. Quem nunca usa banco não deixa
+base vazia para trás.
+
 ## Codes de AGENTE (a aba "Codes" dentro de um agente)
 
 Um Code pode pertencer a um **agente** em vez de um projeto. Não muda **nada** no seu fluxo: mesmo

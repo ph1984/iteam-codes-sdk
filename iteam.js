@@ -532,8 +532,32 @@ async function code_push(payload, pasta = '.', { forcar = false, aoConflitar = '
  *  -> { projectId, tokenPrefix, ownerType: 'agent'|'project', agentId?, ownerName } */
 async function context() { return _codesApi('/api/project/codes/context'); }
 
+/** ARQUIVOS DO CODE — S3 da Contabo, na pasta DESTE Code.
+ *  Caminho e relativo; o servidor monta a chave real a partir do seu token. Nao ha credencial,
+ *  bucket nem endpoint no seu codigo — e Code de outro projeto nao alcanca os seus arquivos.
+ *  O link devolvido e PUBLICO e permanente: "quem tem o link, ve".
+ *
+ *    const { files } = require('./iteam');
+ *    const r = await files.upload('relatorios/fechamento.csv', csvTexto);
+ *    console.log(r.url);
+ *    await files.upload('grafico.png', bufferPng);   // Buffer vai como binario
+ */
+const files = {
+  _slug: () => process.env.ITEAM_CODE_SLUG || '',
+  upload: (caminho, conteudo, tipo) => {
+    const args = { caminho, __slug: files._slug() };
+    if (tipo) args.tipo = tipo;
+    if (Buffer.isBuffer(conteudo) || conteudo instanceof Uint8Array) args.base64 = Buffer.from(conteudo).toString('base64');
+    else args.conteudo = String(conteudo);
+    return iteam_call('files_put', args);
+  },
+  url: (caminho) => iteam_call('files_url', { caminho, __slug: files._slug() }),
+  list: async (prefixo = '', limite = 200) => ((await iteam_call('files_list', { prefixo, limite, __slug: files._slug() })) || {}).arquivos || [],
+  delete: (caminho) => iteam_call('files_del', { caminho, __slug: files._slug() }),
+};
+
 module.exports = {
-  iteam_call, iteam_query, kv, datastore, db, resources, agent_tools, get_input, result,
+  iteam_call, iteam_query, kv, datastore, db, files, resources, agent_tools, get_input, result,
   user, can, require_role, requireRole, menu,
   code_pull, code_push, code_revision, merge3, ConflitoDeRevisao, context,
   SDK_VERSION, version, check_update,

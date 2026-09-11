@@ -25,7 +25,7 @@ RBAC (opt-in, só pra service/app protegido) — quem está logado e o que pode:
   deny = require_role(request.headers, "admin"); # guarda de rota → 403 pronto (ou None)
   telas = menu([{ "title": "X", "path": "/x", "roles": ["admin"] }], me)  # filtra o menu
 """
-import os, json, urllib.request, urllib.error
+import os, json, urllib.request, urllib.error, base64
 
 # Versão deste SDK (YYYY.MM.DD[.n] — o sufixo distingue duas releases no mesmo dia; comparável lexicograficamente). check_update() compara com o servidor.
 SDK_VERSION = "2026.09.11"
@@ -125,6 +125,53 @@ class _DB:
     def tables(self): return iteam_call("db_tables")
     def columns(self, table): return iteam_call("db_columns", table=table)
 db = _DB()
+
+class _Files:
+    """ARQUIVOS DO CODE — S3 da Contabo, na pasta DESTE Code.
+
+    Voce passa caminho relativo; o servidor monta a chave real a partir do seu token. Por isso
+    aqui nao existe credencial, bucket nem endpoint: nao ha o que vazar no seu codigo, e um Code
+    de outro projeto nao alcanca os seus arquivos.
+
+    O link devolvido e PUBLICO e permanente — trate como "quem tem o link, ve". Nao guarde aqui
+    o que nao pode circular.
+
+        from iteam import files
+        r = files.upload("relatorios/fechamento.csv", csv_texto)
+        print(r["url"])                      # link publico, pronto para mandar
+        files.upload("grafico.png", png_bytes)   # binario vai como bytes, sem voce codificar
+        files.list("relatorios/")
+        files.delete("relatorios/antigo.csv")
+    """
+
+    def _slug(self):
+        return os.environ.get("ITEAM_CODE_SLUG", "")
+
+    def upload(self, caminho, conteudo, tipo=None):
+        """Grava um arquivo. `conteudo` pode ser str (texto) ou bytes (binario)."""
+        args = {"caminho": caminho, "__slug": self._slug()}
+        if tipo:
+            args["tipo"] = tipo
+        if isinstance(conteudo, (bytes, bytearray)):
+            args["base64"] = base64.b64encode(bytes(conteudo)).decode()
+        else:
+            args["conteudo"] = str(conteudo)
+        return iteam_call("files_put", **args)
+
+    def url(self, caminho):
+        """Link publico de um arquivo que voce ja gravou (nao verifica se existe)."""
+        return iteam_call("files_url", caminho=caminho, __slug=self._slug())
+
+    def list(self, prefixo="", limite=200):
+        """Lista os arquivos deste Code (caminho, tamanho, data, url)."""
+        r = iteam_call("files_list", prefixo=prefixo, limite=limite, __slug=self._slug())
+        return (r or {}).get("arquivos", [])
+
+    def delete(self, caminho):
+        return iteam_call("files_del", caminho=caminho, __slug=self._slug())
+
+
+files = _Files()
 
 def get_input():
     """Parâmetros de ENTRADA deste run (dict). Vêm de quem chamou o Code — agente (proj_run_code),
